@@ -48,14 +48,9 @@ static bool isValidRegDefOf(const MachineOperand &MO, MCRegister PhysReg,
   return TRI->regsOverlap(MO.getReg(), PhysReg);
 }
 
-int ReachingDefAnalysis::getIncomingReachingDef(unsigned PredNum,
-                                                unsigned Unit) const {
-  const MBBDefsInfo &PredDefs = MBBReachingDefs[PredNum];
-  if (PredDefs.empty())
-    // Predecessor not processed yet or unreachable.
-    return ReachingDefDefaultVal;
-
-  const MBBRegUnitDefs &Defs = PredDefs[Unit];
+int ReachingDefAnalysis::getIncomingReachingDef(
+    unsigned PredNum, const MBBDefsInfo &UnitDefs) const {
+  const MBBRegUnitDefs &Defs = UnitDefs[PredNum];
   if (Defs.empty())
     // No reaching definitions for this register unit.
     return ReachingDefDefaultVal;
@@ -68,11 +63,17 @@ int ReachingDefAnalysis::getIncomingReachingDef(unsigned PredNum,
   return Def;
 }
 
+void ReachingDefAnalysis::addReachingDef(unsigned MBBNumber, unsigned Unit,
+                                         int Def) {
+  MBBDefsInfo &Defs = RegUnitDefs[Unit];
+  // If a reg unit is used at all, preallocate space for all MBBs at once.
+  if (Defs.empty())
+    Defs.resize(NumBlocks);
+  Defs[MBBNumber].push_back(Def);
+}
+
 void ReachingDefAnalysis::enterBasicBlock(MachineBasicBlock *MBB) {
   unsigned MBBNumber = MBB->getNumber();
-  assert(MBBNumber < MBBReachingDefs.size() &&
-         "Unexpected basic block number.");
-  MBBReachingDefs[MBBNumber].resize(NumRegUnits);
 
   // Reset instruction counter in each basic block.
   CurInstr = 0;
@@ -91,7 +92,7 @@ void ReachingDefAnalysis::enterBasicBlock(MachineBasicBlock *MBB) {
         // before the call.
         if (LiveRegs[Unit] != -1) {
           LiveRegs[Unit] = -1;
-          MBBReachingDefs[MBBNumber][Unit].push_back(-1);
+          addReachingDef(MBBNumber, Unit, -1);
         }
       }
     }
@@ -99,22 +100,21 @@ void ReachingDefAnalysis::enterBasicBlock(MachineBasicBlock *MBB) {
     return;
   }
 
-  // Try to coalesce live-out registers from predecessors.
-  for (MachineBasicBlock *pred : MBB->predecessors()) {
+  for (unsigned Unit = 0; Unit != NumRegUnits; ++Unit) {
+    const MBBDefsInfo &UnitDefs = RegUnitDefs[Unit];
+    if (UnitDefs.empty())
+      // Unused register unit.
+      continue;
+
     // Find the most recent reaching definition from a predecessor.
-    for (unsigned Unit = 0; Unit != NumRegUnits; ++Unit) {
-      int Def = getIncomingReachingDef(pred->getNumber(), Unit);
-      if (Def == ReachingDefDefaultVal)
-        continue;
+    for (MachineBasicBlock *pred : MBB->predecessors())
+      LiveRegs[Unit] = std::max(
+          LiveRegs[Unit], getIncomingReachingDef(pred->getNumber(), UnitDefs));
 
-      LiveRegs[Unit] = std::max(LiveRegs[Unit], Def);
-    }
-  }
-
-  // Insert the most recent reaching definition we found.
-  for (unsigned Unit = 0; Unit != NumRegUnits; ++Unit)
+    // Insert the most recent reaching definition we found.
     if (LiveRegs[Unit] != ReachingDefDefaultVal)
-      MBBReachingDefs[MBBNumber][Unit].push_back(LiveRegs[Unit]);
+      addReachingDef(MBBNumber, Unit, LiveRegs[Unit]);
+  }
 }
 
 void ReachingDefAnalysis::leaveBasicBlock(MachineBasicBlock *MBB) {
@@ -129,9 +129,6 @@ void ReachingDefAnalysis::processDefs(MachineInstr *MI) {
   assert(!MI->isDebugInstr() && "Won't process debug instructions");
 
   unsigned MBBNumber = MI->getParent()->getNumber();
-  assert(MBBNumber < MBBReachingDefs.size() &&
-         "Unexpected basic block number.");
-
   for (auto &MO : MI->operands()) {
     if (!isValidRegDef(MO))
       continue;
@@ -143,7 +140,7 @@ void ReachingDefAnalysis::processDefs(MachineInstr *MI) {
       // How many instructions since this reg unit was last written?
       if (LiveRegs[Unit] != CurInstr) {
         LiveRegs[Unit] = CurInstr;
-        MBBReachingDefs[MBBNumber][Unit].push_back(CurInstr);
+        addReachingDef(MBBNumber, Unit, CurInstr);
       }
     }
   }
@@ -152,21 +149,22 @@ void ReachingDefAnalysis::processDefs(MachineInstr *MI) {
 }
 
 void ReachingDefAnalysis::reprocessBasicBlock(MachineBasicBlock *MBB) {
-  unsigned MBBNumber = MBB->getNumber();
-  assert(MBBNumber < MBBReachingDefs.size() &&
-         "Unexpected basic block number.");
-
   // When reprocessing a block, the only thing we need to do is check whether
   // there is now a more recent incoming reaching definition from a predecessor.
-  for (MachineBasicBlock *pred : MBB->predecessors()) {
-    unsigned PredNum = pred->getNumber();
-    for (unsigned Unit = 0; Unit != NumRegUnits; ++Unit) {
-      int Def = getIncomingReachingDef(PredNum, Unit);
+  unsigned MBBNumber = MBB->getNumber();
+  for (unsigned Unit = 0; Unit != NumRegUnits; ++Unit) {
+    MBBDefsInfo &UnitDefs = RegUnitDefs[Unit];
+    if (UnitDefs.empty())
+      // Unused register unit.
+      continue;
+
+    for (MachineBasicBlock *pred : MBB->predecessors()) {
+      int Def = getIncomingReachingDef(pred->getNumber(), UnitDefs);
       if (Def == ReachingDefDefaultVal)
         continue;
 
-      auto Start = MBBReachingDefs[MBBNumber][Unit].begin();
-      if (Start != MBBReachingDefs[MBBNumber][Unit].end() && *Start < 0) {
+      auto Start = UnitDefs[MBBNumber].begin();
+      if (Start != UnitDefs[MBBNumber].end() && *Start < 0) {
         if (*Start >= Def)
           continue;
 
@@ -174,7 +172,7 @@ void ReachingDefAnalysis::reprocessBasicBlock(MachineBasicBlock *MBB) {
         *Start = Def;
       } else {
         // Insert new reaching def from predecessor.
-        MBBReachingDefs[MBBNumber][Unit].insert(Start, Def);
+        UnitDefs[MBBNumber].insert(Start, Def);
       }
     }
   }
@@ -212,7 +210,7 @@ bool ReachingDefAnalysis::runOnMachineFunction(MachineFunction &mf) {
 void ReachingDefAnalysis::releaseMemory() {
   // Clear the internal vectors.
   MBBNumInsts.clear();
-  MBBReachingDefs.clear();
+  RegUnitDefs.clear();
   InstIds.clear();
   LiveRegs.clear();
 }
@@ -225,8 +223,9 @@ void ReachingDefAnalysis::reset() {
 
 void ReachingDefAnalysis::init() {
   NumRegUnits = TRI->getNumRegUnits();
-  MBBReachingDefs.resize(MF->getNumBlockIDs());
-  MBBNumInsts.resize(MF->getNumBlockIDs());
+  NumBlocks = MF->getNumBlockIDs();
+  RegUnitDefs.resize(NumRegUnits);
+  MBBNumInsts.resize(NumBlocks, -1);
   LoopTraversal Traversal;
   TraversedMBBOrder = Traversal.traverse(*MF);
 }
@@ -237,10 +236,10 @@ void ReachingDefAnalysis::traverse() {
     processBasicBlock(TraversedMBB);
 #ifndef NDEBUG
   // Make sure reaching defs are sorted and unique.
-  for (MBBDefsInfo &MBBDefs : MBBReachingDefs) {
-    for (MBBRegUnitDefs &RegUnitDefs : MBBDefs) {
+  for (const MBBDefsInfo &MBBDefs : RegUnitDefs) {
+    for (const MBBRegUnitDefs &Defs : MBBDefs) {
       int LastDef = ReachingDefDefaultVal;
-      for (int Def : RegUnitDefs) {
+      for (int Def : Defs) {
         assert(Def > LastDef && "Defs must be sorted and unique");
         LastDef = Def;
       }
@@ -255,11 +254,13 @@ int ReachingDefAnalysis::getReachingDef(MachineInstr *MI,
   int InstId = InstIds.lookup(MI);
   int DefRes = ReachingDefDefaultVal;
   unsigned MBBNumber = MI->getParent()->getNumber();
-  assert(MBBNumber < MBBReachingDefs.size() &&
-         "Unexpected basic block number.");
   int LatestDef = ReachingDefDefaultVal;
-  for (MCRegUnit Unit : TRI->regunits(PhysReg)) {
-    for (int Def : MBBReachingDefs[MBBNumber][Unit]) {
+  for (MCRegUnitIterator Unit(PhysReg, TRI); Unit.isValid(); ++Unit) {
+    const MBBDefsInfo &Defs = RegUnitDefs[*Unit];
+    if (Defs.empty())
+      // Unused register unit.
+      continue;
+    for (int Def : Defs[MBBNumber]) {
       if (Def >= InstId)
         break;
       DefRes = Def;
@@ -289,7 +290,7 @@ bool ReachingDefAnalysis::hasSameReachingDef(MachineInstr *A, MachineInstr *B,
 
 MachineInstr *ReachingDefAnalysis::getInstFromId(MachineBasicBlock *MBB,
                                                  int InstId) const {
-  assert(static_cast<size_t>(MBB->getNumber()) < MBBReachingDefs.size() &&
+  assert(static_cast<size_t>(MBB->getNumber()) < MBBNumInsts.size() &&
          "Unexpected basic block number.");
   assert(InstId < static_cast<int>(MBB->size()) &&
          "Unexpected instruction id.");
