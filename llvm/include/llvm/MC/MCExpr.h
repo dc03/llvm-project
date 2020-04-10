@@ -43,10 +43,7 @@ public:
   };
 
 private:
-  static const unsigned NumSubclassDataBits = 24;
-  static_assert(
-      NumSubclassDataBits == CHAR_BIT * (sizeof(unsigned) - sizeof(ExprKind)),
-      "ExprKind and SubclassData together should take up one word");
+  enum { NumSubclassDataBits = 24 };
 
   ExprKind Kind;
   /// Field reserved for use by MCExpr subclasses.
@@ -365,18 +362,28 @@ private:
   /// The symbol being referenced.
   const MCSymbol *Symbol;
 
-  // Subclass data stores VariantKind in bits 0..15 and HasSubsectionsViaSymbols
-  // in bit 16.
+  // Subclass data stores VariantKind in bits 0..15, UseParensForSymbolVariant
+  // in bit 16 and HasSubsectionsViaSymbols in bit 17.
   static const unsigned VariantKindBits = 16;
   static const unsigned VariantKindMask = (1 << VariantKindBits) - 1;
 
+  /// Specifies how the variant kind should be printed.
+  static const unsigned UseParensForSymbolVariantBit = 1 << VariantKindBits;
+
   // FIXME: Remove this bit.
-  static const unsigned HasSubsectionsViaSymbolsBit = 1 << VariantKindBits;
+  static const unsigned HasSubsectionsViaSymbolsBit =
+      1 << (VariantKindBits + 1);
 
   static unsigned encodeSubclassData(VariantKind Kind,
-                                     bool HasSubsectionsViaSymbols) {
+                              bool UseParensForSymbolVariant,
+                              bool HasSubsectionsViaSymbols) {
     return (unsigned)Kind |
+           (UseParensForSymbolVariant ? UseParensForSymbolVariantBit : 0) |
            (HasSubsectionsViaSymbols ? HasSubsectionsViaSymbolsBit : 0);
+  }
+
+  bool useParensForSymbolVariant() const {
+    return (getSubclassData() & UseParensForSymbolVariantBit) != 0;
   }
 
   explicit MCSymbolRefExpr(const MCSymbol *Symbol, VariantKind Kind,
@@ -404,6 +411,8 @@ public:
   VariantKind getKind() const {
     return (VariantKind)(getSubclassData() & VariantKindMask);
   }
+
+  void printVariantKind(raw_ostream &OS) const;
 
   bool hasSubsectionsViaSymbols() const {
     return (getSubclassData() & HasSubsectionsViaSymbolsBit) != 0;

@@ -202,7 +202,8 @@ const MCConstantExpr *MCConstantExpr::create(int64_t Value, MCContext &Ctx,
 MCSymbolRefExpr::MCSymbolRefExpr(const MCSymbol *Symbol, VariantKind Kind,
                                  const MCAsmInfo *MAI, SMLoc Loc)
     : MCExpr(MCExpr::SymbolRef, Loc,
-             encodeSubclassData(Kind, MAI->hasSubsectionsViaSymbols())),
+             encodeSubclassData(Kind, MAI->useParensForSymbolVariant(),
+                                MAI->hasSubsectionsViaSymbols())),
       Symbol(Symbol) {
   assert(Symbol);
 }
@@ -531,6 +532,13 @@ MCSymbolRefExpr::getVariantKindForName(StringRef Name) {
     .Case("tpoff_hi", VK_VE_TPOFF_HI32)
     .Case("tpoff_lo", VK_VE_TPOFF_LO32)
     .Default(VK_Invalid);
+}
+
+void MCSymbolRefExpr::printVariantKind(raw_ostream &OS) const {
+  if (useParensForSymbolVariant())
+    OS << '(' << MCSymbolRefExpr::getVariantKindName(getKind()) << ')';
+  else
+    OS << '@' << MCSymbolRefExpr::getVariantKindName(getKind());
 }
 
 /* *** */
