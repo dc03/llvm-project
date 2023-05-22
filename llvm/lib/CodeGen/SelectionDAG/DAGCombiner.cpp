@@ -2870,9 +2870,9 @@ SDValue DAGCombiner::visitADD(SDNode *N) {
     return V;
 
   // fold (a+b) -> (a|b) iff a and b share no bits.
-  if ((!LegalOperations || TLI.isOperationLegal(ISD::OR, VT)) &&
-      DAG.haveNoCommonBitsSet(N0, N1))
-    return DAG.getNode(ISD::OR, DL, VT, N0, N1);
+  // if ((!LegalOperations || TLI.isOperationLegal(ISD::OR, VT)) &&
+  //    DAG.haveNoCommonBitsSet(N0, N1))
+  //  return DAG.getNode(ISD::OR, DL, VT, N0, N1);
 
   // Fold (add (vscale * C0), (vscale * C1)) to (vscale * (C0 + C1)).
   if (N0.getOpcode() == ISD::VSCALE && N1.getOpcode() == ISD::VSCALE) {

@@ -1797,8 +1797,17 @@ bool TargetLowering::SimplifyDemandedBits(
           }
           return true;
         }
-        Known.resetAll();
       }
+
+      if (SimplifyDemandedBits(
+              Op0, APInt::getAllOnes(Op0.getScalarValueSizeInBits()),
+              DemandedElts, Known, TLO, Depth + 1))
+        return true;
+      if (SimplifyDemandedBits(
+              Op1, APInt::getAllOnes(Op1.getScalarValueSizeInBits()),
+              DemandedElts, Known2, TLO, Depth + 1))
+        return true;
+      Known = KnownBits::shl(Known, Known2);
     }
 
     // If we are only demanding sign bits then we can use the shift source
@@ -1878,6 +1887,21 @@ bool TargetLowering::SimplifyDemandedBits(
           return TLO.CombineTo(Op, NewOp);
         }
       }
+    } else {
+      if (SimplifyDemandedBits(
+              Op0, APInt::getAllOnes(Op0.getScalarValueSizeInBits()),
+              DemandedElts, Known, TLO, Depth + 1))
+        return true;
+      if (SimplifyDemandedBits(
+              Op1, APInt::getAllOnes(Op1.getScalarValueSizeInBits()),
+              DemandedElts, Known2, TLO, Depth + 1))
+        return true;
+      Known = KnownBits::lshr(Known, Known2);
+
+      // Minimum shift high bits are known zero.
+      if (const APInt *ShMinAmt =
+              TLO.DAG.getValidMinimumShiftAmountConstant(Op, DemandedElts))
+        Known.Zero.setHighBits(ShMinAmt->getZExtValue());
     }
     break;
   }
@@ -1960,6 +1984,16 @@ bool TargetLowering::SimplifyDemandedBits(
           return TLO.CombineTo(Op, NewOp);
         }
       }
+    } else {
+      if (SimplifyDemandedBits(
+              Op0, APInt::getAllOnes(Op0.getScalarValueSizeInBits()),
+              DemandedElts, Known, TLO, Depth + 1))
+        return true;
+      if (SimplifyDemandedBits(
+              Op1, APInt::getAllOnes(Op1.getScalarValueSizeInBits()),
+              DemandedElts, Known2, TLO, Depth + 1))
+        return true;
+      Known = KnownBits::lshr(Known, Known2);
     }
     break;
   }
@@ -2592,6 +2626,11 @@ bool TargetLowering::SimplifyDemandedBits(
     unsigned DemandedBitsLZ = DemandedBits.countl_zero();
     APInt LoMask = APInt::getLowBitsSet(BitWidth, BitWidth - DemandedBitsLZ);
     KnownBits KnownOp0, KnownOp1;
+
+    // KnownBits DAGBits0 = TLO.DAG.computeKnownBits(Op0, DemandedElts, Depth +
+    // 1); KnownBits DAGBits1 = TLO.DAG.computeKnownBits(Op1, DemandedElts,
+    // Depth + 1);
+
     if (SimplifyDemandedBits(Op0, LoMask, DemandedElts, KnownOp0, TLO,
                              Depth + 1) ||
         SimplifyDemandedBits(Op1, LoMask, DemandedElts, KnownOp1, TLO,
@@ -2691,6 +2730,62 @@ bool TargetLowering::SimplifyDemandedBits(
       }
     }
 
+    auto __haveNoCommonBitsSetCommutative = [](SDValue A, SDValue B) {
+      // Match masked merge pattern (X & ~M) op (Y & M)
+      // Including degenerate case (X & ~M) op M
+      auto MatchNoCommonBitsPattern = [&](SDValue Not, SDValue Mask,
+                                          SDValue Other) {
+        if (SDValue NotOperand =
+                getBitwiseNotOperand(Not, Mask, /* AllowUndefs */ true)) {
+          if (NotOperand->getOpcode() == ISD::ZERO_EXTEND ||
+              NotOperand->getOpcode() == ISD::TRUNCATE)
+            NotOperand = NotOperand->getOperand(0);
+
+          if (Other == NotOperand)
+            return true;
+          if (Other->getOpcode() == ISD::AND)
+            return NotOperand == Other->getOperand(0) ||
+                   NotOperand == Other->getOperand(1);
+        }
+        return false;
+      };
+
+      if (A->getOpcode() == ISD::ZERO_EXTEND || A->getOpcode() == ISD::TRUNCATE)
+        A = A->getOperand(0);
+
+      if (B->getOpcode() == ISD::ZERO_EXTEND || B->getOpcode() == ISD::TRUNCATE)
+        B = B->getOperand(0);
+
+      if (A->getOpcode() == ISD::AND)
+        return MatchNoCommonBitsPattern(A->getOperand(0), A->getOperand(1),
+                                        B) ||
+               MatchNoCommonBitsPattern(A->getOperand(1), A->getOperand(0), B);
+      return false;
+    };
+
+    auto __haveNoCommonBitsSet = [&](const KnownBits &LHS,
+                                     const KnownBits &RHS) {
+      return (LHS.Zero | RHS.Zero).isAllOnes();
+    };
+
+    // if (DAGBits0 != KnownOp0 || DAGBits1 != KnownOp1) {
+    //     Op.dump();
+    //     dbgs() << "DAGBits0: " << DAGBits0 << '\n'
+    //            << "DAGBits1: " << DAGBits1 << '\n'
+    //            << "KnownOp0: " << KnownOp0 << '\n'
+    //            << "KnownOp1: " << KnownOp1 << '\n';
+    //     assert(0);
+    // }
+
+    if (Op.getOpcode() == ISD::ADD &&
+        (!TLO.LegalOps || isOperationLegal(ISD::OR, VT)) &&
+        (__haveNoCommonBitsSetCommutative(Op0, Op1) ||
+         __haveNoCommonBitsSetCommutative(Op1, Op0) ||
+         __haveNoCommonBitsSet(KnownOp0, KnownOp1))) {
+      SDValue Res = TLO.DAG.getNode(ISD::OR, dl, VT, Op0, Op1);
+      return TLO.CombineTo(Op, Res);
+    }
+
     if (Op.getOpcode() == ISD::MUL) {
       Known = KnownBits::mul(KnownOp0, KnownOp1);
     } else { // Op.getOpcode() is either ISD::ADD or ISD::SUB.
@@ -2711,6 +2806,10 @@ bool TargetLowering::SimplifyDemandedBits(
       if (SimplifyDemandedBitsForTargetNode(Op, DemandedBits, DemandedElts,
                                             Known, TLO, Depth))
         return true;
+      else {
+        // Fall back to computeKnownBitsForTargetNode
+        computeKnownBitsForTargetNode(Op, Known, DemandedElts, TLO.DAG, Depth);
+      }
       break;
     }
 
@@ -2739,6 +2838,18 @@ bool TargetLowering::SimplifyDemandedBits(
           TLO.DAG.getConstantFP(
               APFloat(TLO.DAG.EVTToAPFloatSemantics(VT), Known.One), dl, VT));
   }
+
+  // if (Depth > 0) {
+  //   // Bitcast only computes known bits for Depth > 0.
+  //   KnownBits K = TLO.DAG.computeKnownBits(Op, DemandedElts, Depth);
+  //   if ((K.One & DemandedBits) != (Known.One & DemandedBits) ||
+  //       (K.Zero & DemandedBits) != (Known.Zero & DemandedBits)) {
+  //     Op.dump();
+  //     dbgs() << "computeKnownBits(): " << K
+  //            << "\nSimplifyDemandedBits(): " << Known << "\n";
+  //     assert(0);
+  //   }
+  // }
 
   // A multi use 'all demanded elts' simplify failed to find any knownbits.
   // Try again just for the original demanded elts.
