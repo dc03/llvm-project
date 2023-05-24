@@ -1862,8 +1862,20 @@ void DAGCombiner::Run(CombineLevel AtLevel) {
     // any additional opportunities, but there may be a large number of such
     // users, potentially causing compile time explosion.
     if (RV.getOpcode() != ISD::EntryToken) {
-      AddToWorklist(RV.getNode());
-      AddUsersToWorklist(RV.getNode());
+      OnlyAddToWorklist(RV.getNode());
+      auto Uses = RV.getNode()->uses();
+      for (SDNode *Node : Uses) {
+        OnlyAddToWorklist(Node);
+      }
+
+      if (RV.use_empty()) {
+        ConsiderForPruning(RV.getNode());
+        for (SDNode *Node : Uses) {
+          if (Node->use_empty()) {
+            ConsiderForPruning(Node);
+          }
+        }
+      }
     }
 
     // Finally, if the node is now dead, remove it from the graph.  The node
