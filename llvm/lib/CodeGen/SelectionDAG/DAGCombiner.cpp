@@ -278,6 +278,19 @@ namespace {
         Worklist.push_back(N);
     }
 
+    void OnlyAddToWorklist(SDNode *N) {
+      assert(N->getOpcode() != ISD::DELETED_NODE &&
+             "Deleted Node added to Worklist");
+
+      // Skip handle nodes as they can't usefully be combined and confuse the
+      // zero-use deletion strategy.
+      if (N->getOpcode() == ISD::HANDLENODE)
+        return;
+
+      if (WorklistMap.insert(std::make_pair(N, Worklist.size())).second)
+        Worklist.push_back(N);
+    }
+
     /// Remove all instances of N from the worklist.
     void removeFromWorklist(SDNode *N) {
       CombinedNodes.erase(N);
@@ -1770,8 +1783,12 @@ void DAGCombiner::Run(CombineLevel AtLevel) {
   WorklistInserter AddNodes(*this);
 
   // Add all the dag nodes to the worklist.
-  for (SDNode &Node : DAG.allnodes())
-    AddToWorklist(&Node);
+  for (SDNode &Node : DAG.allnodes()) {
+    OnlyAddToWorklist(&Node);
+    if (Node.use_empty()) {
+      ConsiderForPruning(&Node);
+    }
+  }
 
   // Create a dummy node (which is not added to allnodes), that adds a reference
   // to the root node, preventing it from being deleted, and tracking any
