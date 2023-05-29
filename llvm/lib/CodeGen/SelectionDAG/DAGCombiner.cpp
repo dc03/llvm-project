@@ -251,10 +251,12 @@ namespace {
       // We use the minimum store size here, since that's all we can guarantee
       // for the scalable vector types.
       for (MVT VT : MVT::all_valuetypes())
-        if (EVT(VT).isSimple() && VT != MVT::Other &&
-            TLI.isTypeLegal(EVT(VT)) &&
-            VT.getSizeInBits().getKnownMinValue() >= MaximumLegalStoreInBits)
-          MaximumLegalStoreInBits = VT.getSizeInBits().getKnownMinValue();
+        if (VT != MVT::Other &&
+            TLI.isTypeLegal(EVT(VT))) {
+          auto KnownMinSize = VT.getSizeInBits().getKnownMinValue();
+          if (KnownMinSize > MaximumLegalStoreInBits)
+            MaximumLegalStoreInBits = KnownMinSize;
+        }
     }
 
     void ConsiderForPruning(SDNode *N) {
