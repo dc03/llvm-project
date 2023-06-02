@@ -1070,28 +1070,6 @@ bool TargetLowering::SimplifyDemandedBits(
   assert(Op.getScalarValueSizeInBits() == BitWidth &&
          "Mask size mismatches value type size!");
 
-  // Don't know anything.
-  Known = KnownBits(BitWidth);
-
-  EVT VT = Op.getValueType();
-  bool IsLE = TLO.DAG.getDataLayout().isLittleEndian();
-  unsigned NumElts = OriginalDemandedElts.getBitWidth();
-  assert((!VT.isFixedLengthVector() || NumElts == VT.getVectorNumElements()) &&
-         "Unexpected vector size");
-
-  APInt DemandedBits = OriginalDemandedBits;
-  APInt DemandedElts = OriginalDemandedElts;
-  SDLoc dl(Op);
-  auto &DL = TLO.DAG.getDataLayout();
-
-  // Undef operand.
-  if (Op.isUndef())
-    return false;
-
-  // We can't simplify target constants.
-  if (Op.getOpcode() == ISD::TargetConstant)
-    return false;
-
   if (Op.getOpcode() == ISD::Constant) {
     // We know all of the bits for a constant!
     Known = KnownBits::makeConstant(cast<ConstantSDNode>(Op)->getAPIntValue());
@@ -1104,6 +1082,28 @@ bool TargetLowering::SimplifyDemandedBits(
         cast<ConstantFPSDNode>(Op)->getValueAPF().bitcastToAPInt());
     return false;
   }
+
+  // Don't know anything.
+  Known = KnownBits(BitWidth);
+
+  // Undef operand.
+  if (Op.isUndef())
+    return false;
+
+  // We can't simplify target constants.
+  if (Op.getOpcode() == ISD::TargetConstant)
+    return false;
+
+  EVT VT = Op.getValueType();
+  bool IsLE = TLO.DAG.getDataLayout().isLittleEndian();
+  unsigned NumElts = OriginalDemandedElts.getBitWidth();
+  assert((!VT.isFixedLengthVector() || NumElts == VT.getVectorNumElements()) &&
+         "Unexpected vector size");
+
+  APInt DemandedBits = OriginalDemandedBits;
+  APInt DemandedElts = OriginalDemandedElts;
+  SDLoc dl(Op);
+  auto &DL = TLO.DAG.getDataLayout();
 
   // Other users may use these bits.
   bool HasMultiUse = false;
