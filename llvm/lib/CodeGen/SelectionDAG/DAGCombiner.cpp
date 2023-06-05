@@ -174,9 +174,8 @@ namespace {
     /// This records all nodes attempted to be added to the worklist since we
     /// considered a new worklist entry. As we keep do not add duplicate nodes
     /// in the worklist, this is different from the tail of the worklist.
-    SmallPtrSet<SDNode *, 32> *PruningList;
-    SmallPtrSet<SDNode *, 32> PruningList1;
-    SmallPtrSet<SDNode *, 32> PruningList2;
+    SmallPtrSet<SDNode *, 32> PruningList;
+    bool IsClearingDanglingWorklistEntries;
 
     /// Set of nodes which have been combined (at least once).
     ///
@@ -213,24 +212,13 @@ namespace {
     // failed combine which may have created a DAG node.
     void clearAddedDanglingWorklistEntries() {
       // Check any nodes added to the worklist to see if they are prunable.
-    Begin:
-      PruningList = &PruningList2;
-      for (auto *N: PruningList1)  {
-        // auto *N = PruningList.pop_back_val();
+      IsClearingDanglingWorklistEntries = true;
+      for (auto *N: PruningList)  {
         if (N->use_empty() && N->getOpcode() != ISD::DELETED_NODE)
           recursivelyDeleteUnusedNodes(N);
       }
-      PruningList1.clear();
-      PruningList = &PruningList1;
-      for (auto *N : PruningList2) {
-        if (N->use_empty() && N->getOpcode() != ISD::DELETED_NODE) {
-          recursivelyDeleteUnusedNodes(N);
-        }
-      }
-      PruningList2.clear();
-      if (!PruningList1.empty() || !PruningList2.empty()) {
-        goto Begin;
-      }
+      PruningList.clear();
+      IsClearingDanglingWorklistEntries = false;
     }
 
     SDNode *getNextWorklistEntry() {
@@ -261,7 +249,7 @@ namespace {
           STI(D.getSubtarget().getSelectionDAGInfo()), OptLevel(OL), AA(AA) {
       ForCodeSize = DAG.shouldOptForSize();
       DisableGenericCombines = STI && STI->disableGenericCombines(OptLevel);
-      PruningList = &PruningList1;
+      IsClearingDanglingWorklistEntries = false;
 
       MaximumLegalStoreInBits = 0;
       // We use the minimum store size here, since that's all we can guarantee
@@ -275,7 +263,7 @@ namespace {
 
     void ConsiderForPruning(SDNode *N) {
       // Mark this for potential pruning.
-      PruningList->insert(N);
+      PruningList.insert(N);
     }
 
     /// Add to the worklist making sure its instance is at the back (next to be
@@ -299,7 +287,9 @@ namespace {
     /// Remove all instances of N from the worklist.
     void removeFromWorklist(SDNode *N) {
       CombinedNodes.erase(N);
-      PruningList->erase(N);
+      if (!IsClearingDanglingWorklistEntries) {
+        PruningList.erase(N);
+      }
       StoreRootCountMap.erase(N);
 
       auto It = WorklistMap.find(N);
@@ -1769,7 +1759,7 @@ bool DAGCombiner::recursivelyDeleteUnusedNodes(SDNode *N) {
       removeFromWorklist(N);
       DAG.DeleteNode(N);
     } else {
-      AddToWorklist(N);
+      AddToWorklist(N, false);
     }
   } while (!Nodes.empty());
   return true;
