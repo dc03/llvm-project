@@ -175,6 +175,7 @@ namespace {
     /// considered a new worklist entry. As we keep do not add duplicate nodes
     /// in the worklist, this is different from the tail of the worklist.
     SmallSetVector<SDNode *, 32> PruningList;
+    bool IsClearingDanglingWorklistEntries;
 
     /// Set of nodes which have been combined (at least once).
     ///
@@ -211,11 +212,13 @@ namespace {
     // failed combine which may have created a DAG node.
     void clearAddedDanglingWorklistEntries() {
       // Check any nodes added to the worklist to see if they are prunable.
-      while (!PruningList.empty()) {
-        auto *N = PruningList.pop_back_val();
-        if (N->use_empty())
+      IsClearingDanglingWorklistEntries = true;
+      for (auto *N : PruningList) {
+        if (N->use_empty() && N->getOpcode() != ISD::DELETED_NODE)
           recursivelyDeleteUnusedNodes(N);
       }
+      PruningList.clear();
+      IsClearingDanglingWorklistEntries = false;
     }
 
     SDNode *getNextWorklistEntry() {
@@ -283,7 +286,9 @@ namespace {
     /// Remove all instances of N from the worklist.
     void removeFromWorklist(SDNode *N) {
       CombinedNodes.erase(N);
-      PruningList.remove(N);
+      if (!IsClearingDanglingWorklistEntries) {
+        PruningList.remove(N);
+      }
       StoreRootCountMap.erase(N);
 
       auto It = WorklistMap.find(N);
