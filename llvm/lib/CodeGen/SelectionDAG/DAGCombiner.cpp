@@ -175,6 +175,7 @@ namespace {
     /// considered a new worklist entry. As we keep do not add duplicate nodes
     /// in the worklist, this is different from the tail of the worklist.
     SmallVector<SDNode *, 32> PruningList;
+    bool IsClearingAddedDanglingWorklistEntries;
 
     /// Set of nodes which have been combined (at least once).
     ///
@@ -211,12 +212,14 @@ namespace {
     // failed combine which may have created a DAG node.
     void clearAddedDanglingWorklistEntries() {
       // Check any nodes added to the worklist to see if they are prunable.
+      IsClearingAddedDanglingWorklistEntries = true;
       for (auto *N : PruningList) {
         if (N->use_empty() && N->getOpcode() != ISD::DELETED_NODE) {
           recursivelyDeleteUnusedNodes(N);
         }
       }
       PruningList.clear();
+      IsClearingAddedDanglingWorklistEntries = false;
     }
 
     SDNode *getNextWorklistEntry() {
@@ -247,6 +250,7 @@ namespace {
           STI(D.getSubtarget().getSelectionDAGInfo()), OptLevel(OL), AA(AA) {
       ForCodeSize = DAG.shouldOptForSize();
       DisableGenericCombines = STI && STI->disableGenericCombines(OptLevel);
+      IsClearingAddedDanglingWorklistEntries = false;
 
       MaximumLegalStoreInBits = 0;
       // We use the minimum store size here, since that's all we can guarantee
@@ -284,6 +288,9 @@ namespace {
     /// Remove all instances of N from the worklist.
     void removeFromWorklist(SDNode *N) {
       CombinedNodes.erase(N);
+      if (!IsClearingAddedDanglingWorklistEntries) {
+        erase_value(PruningList, N);
+      }
       StoreRootCountMap.erase(N);
 
       auto It = WorklistMap.find(N);
