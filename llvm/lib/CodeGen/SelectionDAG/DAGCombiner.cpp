@@ -1753,7 +1753,7 @@ bool DAGCombiner::recursivelyDeleteUnusedNodes(SDNode *N) {
       removeFromWorklist(N);
       DAG.DeleteNode(N);
     } else {
-      AddToWorklist(N);
+      AddToWorklist(N, false);
     }
   } while (!Nodes.empty());
   return true;
