@@ -347,7 +347,7 @@ public:
 
   bool insert(const value_type &X) {
     if (isSmall()) {
-      if (find(this->vector_, X) == this->vector_.end()) {
+      if (llvm::find(this->vector_, X) == this->vector_.end()) {
         this->vector_.push_back(X);
         if (this->vector_.size() > N) {
           makeBig();
@@ -362,26 +362,15 @@ public:
 
   template<typename It>
   void insert(It Start, It End) {
-    if (isSmall()) { 
-      size_t elems = std::distance(Start, End);
-      if (this->vector_.size() + elems <= N) {
-        this->vector_.reserve(this->vector_.size() + elems);
-        for (; Start != End; ++Start) {
-          this->vector_.push_back(*Start);
-        }
-      } else {
-        makeBig();
-        BaseClassT::insert(Start, End);
-      }
-    }
-
-    BaseClassT::insert(Start, End);
+    for (; Start != End; ++Start)
+      insert(*Start);
   }
 
   bool remove(const value_type& X) {
     if (isSmall()) {
-      if (find(this->vector_, X) != this->vector_.end()) {
-        llvm::erase_value(this->vector_, X);
+      auto It = llvm::find(this->vector_, X);
+      if (It != this->vector_.end()) {
+        this->vector_.erase(It);
         return true;
       }
       return false;
@@ -414,7 +403,7 @@ public:
   /// Check if the SetVector contains the given key.
   bool contains(const key_type &key) const {
     if (isSmall())
-      return find(this->vector_, key) != this->vector_.end();
+      return llvm::find(this->vector_, key) != this->vector_.end();
     
     return BaseClassT::contains(key);
   }
@@ -423,7 +412,7 @@ public:
   /// \returns 0 if the element is not in the SetVector, 1 if it is.
   size_type count(const key_type &key) const {
     if (isSmall())
-      return find(this->vector_, key) != this->vector_.end();
+      return llvm::find(this->vector_, key) != this->vector_.end();
 
     return BaseClassT::count(key);
   }
@@ -447,7 +436,7 @@ public:
 
   [[nodiscard]] value_type pop_back_val() {
     if (isSmall()) {
-      value_type Ret = this->BaseClassT::back();
+      value_type Ret = this->back();
       pop_back();
       return Ret;
     }
@@ -481,9 +470,29 @@ public:
   }
 
   void swap(SmallSetVector &RHS) {
-    if (!isSmall())
-      this->set_.swap(RHS.set_);
+    this->set_.swap(RHS.set_);
     this->vector_.swap(RHS.vector_);
+  }
+
+  operator BaseClassT() {
+    if (isSmall())
+      makeBig();
+
+    return *this;
+  }
+
+  operator BaseClassT&() {
+    if (isSmall())
+      makeBig();
+
+    return *this;
+  }
+
+  operator BaseClassT*() {
+    if (isSmall())
+      makeBig();
+
+    return static_cast<BaseClassT>(this);
   }
 };
 
