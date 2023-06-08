@@ -356,6 +356,9 @@ private:
   using eq_t = decltype(std::declval<T1 &>() == std::declval<T2 &>());
 
   [[nodiscard]] static constexpr bool canBeSmall() noexcept {
+    if (N == 0)
+      return false;
+
     return is_valid_v<void, eq_t, const value_type, const value_type> ||
            is_valid_v<void, eq_t, const value_type, value_type> ||
            is_valid_v<void, eq_t, value_type, const value_type>;
