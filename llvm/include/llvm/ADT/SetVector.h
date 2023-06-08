@@ -29,19 +29,6 @@
 #include <vector>
 
 namespace llvm {
-
-namespace SetVectorImplementationDetail {
-  template <class AlwaysVoid, template <class...> class Op, class... Args>
-  static constexpr inline bool is_valid_v = false;
-
-  template <template <class...> class Op, class... Args>
-  static constexpr inline bool
-      is_valid_v<std::void_t<Op<Args...>>, Op, Args...> = true;
-
-  template <typename T1, typename T2>
-  using eq_t = decltype(std::declval<T1 &>() == std::declval<T2 &>());
-}
-
 /// A vector that has set insertion semantics.
 ///
 /// This adapter class provides a way to keep a set of things that also has the
@@ -59,12 +46,7 @@ namespace SetVectorImplementationDetail {
 /// value_type to float and key_type to int can produce very surprising results,
 /// but it is not explicitly disallowed.
 template <typename T, typename Vector = std::vector<T>,
-          typename Set = DenseSet<T>, unsigned N
-#ifndef MLIR_SUPPORT_LLVM_H
-          = 0
-#endif
-          >
-
+          typename Set = DenseSet<T>, unsigned N = 0>
 class SetVector {
 public:
   using value_type = typename Vector::value_type;
@@ -188,10 +170,7 @@ public:
   template<typename It>
   void insert(It Start, It End) {
     for (; Start != End; ++Start) {
-      if constexpr (canBeSmall())
-        insert(*Start);
-      else if (set_.insert(*Start).second)
-        vector_.push_back(*Start);
+      insert(*Start);
     }
   }
 
@@ -264,7 +243,7 @@ public:
   bool contains(const key_type &key) const {
     if constexpr (canBeSmall())
       if (isSmall())
-        return find(vector_, key) != vector_.end();
+        return is_contained(vector_, key);
 
     return set_.find(key) != set_.end();
   }
@@ -274,7 +253,7 @@ public:
   size_type count(const key_type &key) const {
     if constexpr (canBeSmall())
       if (isSmall())
-        return llvm::count(vector_, key);
+        return is_contained(vector_, key);
 
     return set_.count(key);
   }
@@ -288,9 +267,7 @@ public:
   /// Remove the last element of the SetVector.
   void pop_back() {
     assert(!empty() && "Cannot remove an element from an empty SetVector!");
-    if (!isSmall())
-      set_.erase(back());
-
+    set_.erase(back());
     vector_.pop_back();
   }
 
@@ -333,7 +310,7 @@ public:
       remove(*SI);
   }
 
-  void swap(SetVector<T, Vector, Set> &RHS) {
+  void swap(SetVector<T, Vector, Set, N> &RHS) {
     set_.swap(RHS.set_);
     vector_.swap(RHS.vector_);
   }
@@ -362,18 +339,11 @@ private:
     }
   };
 
-  [[nodiscard]] static constexpr bool canBeSmall() noexcept {
-    using namespace SetVectorImplementationDetail;
-
-    if (N == 0)
-      return false;
-
-    return is_valid_v<void, eq_t, const value_type, const value_type> ||
-           is_valid_v<void, eq_t, const value_type, value_type> ||
-           is_valid_v<void, eq_t, value_type, const value_type>;
+  [[nodiscard]] static constexpr bool canBeSmall() {
+    return N != 0;
   }
 
-  [[nodiscard]] bool isSmall() const noexcept {
+  [[nodiscard]] bool isSmall() const {
     return set_.empty();
   }
 
@@ -407,9 +377,9 @@ public:
 namespace std {
 
 /// Implement std::swap in terms of SetVector swap.
-template<typename T, typename V, typename S>
+template<typename T, typename V, typename S, unsigned N = 0>
 inline void
-swap(llvm::SetVector<T, V, S> &LHS, llvm::SetVector<T, V, S> &RHS) {
+swap(llvm::SetVector<T, V, S, N> &LHS, llvm::SetVector<T, V, S, N> &RHS) {
   LHS.swap(RHS);
 }
 
