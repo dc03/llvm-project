@@ -59,7 +59,7 @@ template <typename T>
 class MutableArrayRef;
 template <typename... PT>
 class PointerUnion;
-template <typename T, typename Vector, typename Set>
+template <typename T, typename Vector, typename Set, unsigned N = 0>
 class SetVector;
 template <typename T, unsigned N>
 class SmallPtrSet;

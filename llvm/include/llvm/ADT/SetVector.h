@@ -30,6 +30,18 @@
 
 namespace llvm {
 
+namespace SetVectorImplementationDetail {
+  template <class AlwaysVoid, template <class...> class Op, class... Args>
+  static constexpr inline bool is_valid_v = false;
+
+  template <template <class...> class Op, class... Args>
+  static constexpr inline bool
+      is_valid_v<std::void_t<Op<Args...>>, Op, Args...> = true;
+
+  template <typename T1, typename T2>
+  using eq_t = decltype(std::declval<T1 &>() == std::declval<T2 &>());
+}
+
 /// A vector that has set insertion semantics.
 ///
 /// This adapter class provides a way to keep a set of things that also has the
@@ -47,7 +59,12 @@ namespace llvm {
 /// value_type to float and key_type to int can produce very surprising results,
 /// but it is not explicitly disallowed.
 template <typename T, typename Vector = std::vector<T>,
-          typename Set = DenseSet<T>, unsigned N = 0>
+          typename Set = DenseSet<T>, unsigned N
+#ifndef MLIR_SUPPORT_LLVM_H
+          = 0
+#endif
+          >
+
 class SetVector {
 public:
   using value_type = typename Vector::value_type;
@@ -345,17 +362,9 @@ private:
     }
   };
 
-  template <class AlwaysVoid, template <class...> class Op, class... Args>
-  static constexpr inline bool is_valid_v = false;
-
-  template <template <class...> class Op, class... Args>
-  static constexpr inline bool
-      is_valid_v<std::void_t<Op<Args...>>, Op, Args...> = true;
-
-  template <typename T1, typename T2>
-  using eq_t = decltype(std::declval<T1 &>() == std::declval<T2 &>());
-
   [[nodiscard]] static constexpr bool canBeSmall() noexcept {
+    using namespace SetVectorImplementationDetail;
+
     if (N == 0)
       return false;
 
