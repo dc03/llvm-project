@@ -116,10 +116,11 @@ public:
     }
 
     reference& operator=(bool t) {
-      if (t)
-        *WordRef |= BitWord(1) << BitPos;
-      else
-        *WordRef &= ~(BitWord(1) << BitPos);
+      BitWord Mask = BitWord(1) << BitPos;
+      BitWord Value = BitWord(t) << BitPos;
+      // Clear the bit, then set it to the value of 't'
+      // https://stackoverflow.com/a/47990
+      *WordRef = (*WordRef & ~Mask) | Value;
       return *this;
     }
 
