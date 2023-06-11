@@ -222,7 +222,7 @@ void SpillPlacement::releaseMemory() {
 /// activate - mark node n as active if it wasn't already.
 void SpillPlacement::activate(unsigned n) {
   TodoList.insert(n);
-  if (ActiveNodes->test(n))
+  if (LLVM_LIKELY(ActiveNodes->test(n)))
     return;
   ActiveNodes->set(n);
   nodes[n].clear(Threshold);
@@ -236,7 +236,7 @@ void SpillPlacement::activate(unsigned n) {
   // expanding the region through the bundle. This helps compile time by
   // limiting the number of blocks visited and the number of links in the
   // Hopfield network.
-  if (bundles->getBlocks(n).size() > 100) {
+  if (LLVM_UNLIKELY(bundles->getBlocks(n).size() > 100)) {
     nodes[n].BiasP = 0;
     nodes[n].BiasN = (MBFI->getEntryFreq() / 16);
   }
