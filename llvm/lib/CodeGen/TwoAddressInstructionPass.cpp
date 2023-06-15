@@ -101,7 +101,7 @@ class TwoAddressInstructionPass : public MachineFunctionPass {
   MachineBasicBlock *MBB = nullptr;
 
   // Keep track the distance of a MI from the start of the current basic block.
-  DenseMap<MachineInstr*, unsigned> DistanceMap;
+  SmallDenseMap<MachineInstr*, unsigned, 16> DistanceMap;
 
   // Set of already processed instructions in the current block.
   SmallPtrSet<MachineInstr*, 8> Processed;
@@ -109,12 +109,12 @@ class TwoAddressInstructionPass : public MachineFunctionPass {
   // A map from virtual registers to physical registers which are likely targets
   // to be coalesced to due to copies from physical registers to virtual
   // registers. e.g. v1024 = move r0.
-  DenseMap<Register, Register> SrcRegMap;
+  SmallDenseMap<Register, Register, 16> SrcRegMap;
 
   // A map from virtual registers to physical registers which are likely targets
   // to be coalesced to due to copies to physical registers from virtual
   // registers. e.g. r1 = move v1024.
-  DenseMap<Register, Register> DstRegMap;
+  SmallDenseMap<Register, Register, 16> DstRegMap;
 
   void removeClobberedSrcRegMap(MachineInstr *MI);
 
@@ -248,7 +248,7 @@ bool TwoAddressInstructionPass::noUseAfterLastDef(Register Reg, unsigned Dist,
     MachineInstr *MI = MO.getParent();
     if (MI->getParent() != MBB || MI->isDebugValue())
       continue;
-    DenseMap<MachineInstr*, unsigned>::iterator DI = DistanceMap.find(MI);
+    SmallDenseMap<MachineInstr*, unsigned, 16>::iterator DI = DistanceMap.find(MI);
     if (DI == DistanceMap.end())
       continue;
     if (MO.isUse() && DI->second < LastUse)
@@ -424,9 +424,9 @@ findOnlyInterestingUse(Register Reg, MachineBasicBlock *MBB,
 /// Return the physical register the specified virtual register might be mapped
 /// to.
 static MCRegister getMappedReg(Register Reg,
-                               DenseMap<Register, Register> &RegMap) {
+                               SmallDenseMap<Register, Register, 16> &RegMap) {
   while (Reg.isVirtual()) {
-    DenseMap<Register, Register>::iterator SI = RegMap.find(Reg);
+    SmallDenseMap<Register, Register, 16>::iterator SI = RegMap.find(Reg);
     if (SI == RegMap.end())
       return 0;
     Reg = SI->second;
@@ -448,7 +448,7 @@ static bool regsAreCompatible(Register RegA, Register RegB,
 
 /// From RegMap remove entries mapped to a physical register which overlaps MO.
 static void removeMapRegEntry(const MachineOperand &MO,
-                              DenseMap<Register, Register> &RegMap,
+                              SmallDenseMap<Register, Register, 16> &RegMap,
                               const TargetRegisterInfo *TRI) {
   assert(
       (MO.isReg() || MO.isRegMask()) &&
@@ -733,7 +733,7 @@ void TwoAddressInstructionPass::scanUses(Register DstReg) {
     if (IsCopy && !Processed.insert(UseMI).second)
       break;
 
-    DenseMap<MachineInstr*, unsigned>::iterator DI = DistanceMap.find(UseMI);
+    SmallDenseMap<MachineInstr*, unsigned, 16>::iterator DI = DistanceMap.find(UseMI);
     if (DI != DistanceMap.end())
       // Earlier in the same MBB.Reached via a back edge.
       break;
@@ -810,7 +810,7 @@ bool TwoAddressInstructionPass::rescheduleMIBelowKill(
     return false;
 
   MachineInstr *MI = &*mi;
-  DenseMap<MachineInstr*, unsigned>::iterator DI = DistanceMap.find(MI);
+  SmallDenseMap<MachineInstr*, unsigned, 16>::iterator DI = DistanceMap.find(MI);
   if (DI == DistanceMap.end())
     // Must be created from unfolded load. Don't waste time trying this.
     return false;
@@ -975,7 +975,7 @@ bool TwoAddressInstructionPass::isDefTooClose(Register Reg, unsigned Dist,
       continue;
     if (&DefMI == MI)
       return true; // MI is defining something KillMI uses
-    DenseMap<MachineInstr*, unsigned>::iterator DDI = DistanceMap.find(&DefMI);
+    SmallDenseMap<MachineInstr*, unsigned, 16>::iterator DDI = DistanceMap.find(&DefMI);
     if (DDI == DistanceMap.end())
       return true;  // Below MI
     unsigned DefDist = DDI->second;
@@ -998,7 +998,7 @@ bool TwoAddressInstructionPass::rescheduleKillAboveMI(
     return false;
 
   MachineInstr *MI = &*mi;
-  DenseMap<MachineInstr*, unsigned>::iterator DI = DistanceMap.find(MI);
+  SmallDenseMap<MachineInstr*, unsigned, 16>::iterator DI = DistanceMap.find(MI);
   if (DI == DistanceMap.end())
     // Must be created from unfolded load. Don't waste time trying this.
     return false;
