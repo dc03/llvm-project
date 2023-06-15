@@ -446,8 +446,8 @@ private:
 
   /// Map used to track internal linkage functions declared within
   /// extern "C" regions.
-  typedef llvm::MapVector<IdentifierInfo *,
-                          llvm::GlobalValue *> StaticExternCMap;
+  typedef llvm::SmallMapVector<IdentifierInfo *,
+                          llvm::GlobalValue *, 16> StaticExternCMap;
   StaticExternCMap StaticExternCValues;
 
   /// thread_local variables defined or used in this TU.
@@ -578,7 +578,7 @@ private:
 
   std::unique_ptr<SanitizerMetadata> SanitizerMD;
 
-  llvm::MapVector<const Decl *, bool> DeferredEmptyCoverageMappingDecls;
+  llvm::SmallMapVector<const Decl *, bool, 16> DeferredEmptyCoverageMappingDecls;
 
   std::unique_ptr<CoverageMappingModuleGen> CoverageMapping;
 

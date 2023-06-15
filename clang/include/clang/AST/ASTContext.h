@@ -562,8 +562,8 @@ private:
 
   /// Side-table of mangling numbers for declarations which rarely
   /// need them (like static local vars).
-  llvm::MapVector<const NamedDecl *, unsigned> MangleNumbers;
-  llvm::MapVector<const VarDecl *, unsigned> StaticLocalNumbers;
+  llvm::SmallMapVector<const NamedDecl *, unsigned, 16> MangleNumbers;
+  llvm::SmallMapVector<const VarDecl *, unsigned, 16> StaticLocalNumbers;
   /// Mapping the associated device lambda mangling number if present.
   mutable llvm::DenseMap<const CXXRecordDecl *, unsigned>
       DeviceLambdaManglingNumbers;

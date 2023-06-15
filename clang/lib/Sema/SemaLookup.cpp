@@ -4651,7 +4651,7 @@ void TypoCorrectionConsumer::addCorrection(TypoCorrection Correction) {
 }
 
 void TypoCorrectionConsumer::addNamespaces(
-    const llvm::MapVector<NamespaceDecl *, bool> &KnownNamespaces) {
+    const llvm::SmallMapVector<NamespaceDecl *, bool, 16> &KnownNamespaces) {
   SearchNamespaces = true;
 
   for (auto KNPair : KnownNamespaces)

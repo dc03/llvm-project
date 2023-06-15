@@ -832,7 +832,7 @@ public:
 class ADLResult {
 private:
   /// A map from canonical decls to the 'most recent' decl.
-  llvm::MapVector<NamedDecl*, NamedDecl*> Decls;
+  llvm::SmallMapVector<NamedDecl*, NamedDecl*, 16> Decls;
 
   struct select_second {
     NamedDecl *operator()(std::pair<NamedDecl*, NamedDecl*> P) const {

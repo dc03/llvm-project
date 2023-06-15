@@ -4436,7 +4436,7 @@ private:
   //
   // The boolean value will be true to indicate that the namespace was loaded
   // from an AST/PCH file, or false otherwise.
-  llvm::MapVector<NamespaceDecl*, bool> KnownNamespaces;
+  llvm::SmallMapVector<NamespaceDecl*, bool, 16> KnownNamespaces;
 
   /// Whether we have already loaded known namespaces from an extenal
   /// source.

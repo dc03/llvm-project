@@ -141,7 +141,7 @@ public:
   /// implicitly adds all of the known classes in the current AST context to the
   /// to the consumer for correcting nested name specifiers.
   void
-  addNamespaces(const llvm::MapVector<NamespaceDecl *, bool> &KnownNamespaces);
+  addNamespaces(const llvm::SmallMapVector<NamespaceDecl *, bool, 16> &KnownNamespaces);
 
   /// Return the next typo correction that passes all internal filters
   /// and is deemed valid by the consumer's CorrectionCandidateCallback,

@@ -1968,7 +1968,7 @@ private:
   llvm::SmallVector<llvm::BasicBlock *, 2> TrapBBs;
 
   /// Terminate funclets keyed by parent funclet pad.
-  llvm::MapVector<llvm::Value *, llvm::BasicBlock *> TerminateFunclets;
+  llvm::SmallMapVector<llvm::Value *, llvm::BasicBlock *, 16> TerminateFunclets;
 
   /// Largest vector width used in ths function. Will be used to create a
   /// function attribute.
