@@ -36,7 +36,6 @@ template <typename T, typename ToIndexT = identity<unsigned>>
 
     StorageT storage_;
     T nullVal_;
-    ToIndexT toIndex_;
 
   public:
     IndexedMap() : nullVal_(T()) {}
@@ -44,13 +43,13 @@ template <typename T, typename ToIndexT = identity<unsigned>>
     explicit IndexedMap(const T& val) : nullVal_(val) {}
 
     typename StorageT::reference operator[](IndexT n) {
-      assert(toIndex_(n) < storage_.size() && "index out of bounds!");
-      return storage_[toIndex_(n)];
+      assert(ToIndexT()(n) < storage_.size() && "index out of bounds!");
+      return storage_[ToIndexT()(n)];
     }
 
     typename StorageT::const_reference operator[](IndexT n) const {
-      assert(toIndex_(n) < storage_.size() && "index out of bounds!");
-      return storage_[toIndex_(n)];
+      assert(ToIndexT()(n) < storage_.size() && "index out of bounds!");
+      return storage_[ToIndexT()(n)];
     }
 
     void reserve(typename StorageT::size_type s) {
@@ -66,13 +65,13 @@ template <typename T, typename ToIndexT = identity<unsigned>>
     }
 
     void grow(IndexT n) {
-      unsigned NewSize = toIndex_(n) + 1;
+      unsigned NewSize = ToIndexT()(n) + 1;
       if (NewSize > storage_.size())
         resize(NewSize);
     }
 
     bool inBounds(IndexT n) const {
-      return toIndex_(n) < storage_.size();
+      return ToIndexT()(n) < storage_.size();
     }
 
     typename StorageT::size_type size() const {
