@@ -51,7 +51,7 @@ private:
   MapVector<Instruction *, ConstantRange> SeenInsts;
   SmallSetVector<Instruction *, 8> Roots;
   EquivalenceClasses<Instruction *> ECs;
-  MapVector<Instruction *, Value *> ConvertedInsts;
+  SmallMapVector<Instruction *, Value *, 16> ConvertedInsts;
   LLVMContext *Ctx;
 };
 }

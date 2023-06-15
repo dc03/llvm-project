@@ -477,7 +477,7 @@ void processShuffleMasks(
 ///
 /// If the optional TargetTransformInfo is provided, this function tries harder
 /// to do less work by only looking at illegal types.
-MapVector<Instruction*, uint64_t>
+SmallMapVector<Instruction*, uint64_t, 8>
 computeMinimumValueSizes(ArrayRef<BasicBlock*> Blocks,
                          DemandedBits &DB,
                          const TargetTransformInfo *TTI=nullptr);

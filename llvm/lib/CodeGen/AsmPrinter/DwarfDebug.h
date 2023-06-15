@@ -298,7 +298,7 @@ class DwarfDebug : public DebugHandlerBase {
   BumpPtrAllocator DIEValueAllocator;
 
   /// Maps MDNode with its corresponding DwarfCompileUnit.
-  MapVector<const MDNode *, DwarfCompileUnit *> CUMap;
+  SmallMapVector<const MDNode *, DwarfCompileUnit *, 16> CUMap;
 
   /// Maps a CU DIE with its corresponding DwarfCompileUnit.
   DenseMap<const DIE *, DwarfCompileUnit *> CUDieMap;

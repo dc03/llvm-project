@@ -1405,8 +1405,8 @@ LoadInst *GVNPass::findLoadToHoistIntoPred(BasicBlock *Pred, BasicBlock *LoadBB,
 
 void GVNPass::eliminatePartiallyRedundantLoad(
     LoadInst *Load, AvailValInBlkVect &ValuesPerBlock,
-    MapVector<BasicBlock *, Value *> &AvailableLoads,
-    MapVector<BasicBlock *, LoadInst *> *CriticalEdgePredAndLoad) {
+    SmallMapVector<BasicBlock *, Value *, 8> &AvailableLoads,
+    SmallMapVector<BasicBlock *, LoadInst *, 8> *CriticalEdgePredAndLoad) {
   for (const auto &AvailableLoad : AvailableLoads) {
     BasicBlock *UnavailableBlock = AvailableLoad.first;
     Value *LoadPtr = AvailableLoad.second;
@@ -1558,7 +1558,7 @@ bool GVNPass::PerformLoadPRE(LoadInst *Load, AvailValInBlkVect &ValuesPerBlock,
 
   // Check to see how many predecessors have the loaded value fully
   // available.
-  MapVector<BasicBlock *, Value *> PredLoads;
+  SmallMapVector<BasicBlock *, Value *, 8> PredLoads;
   DenseMap<BasicBlock *, AvailabilityState> FullyAvailableBlocks;
   for (const AvailableValueInBlock &AV : ValuesPerBlock)
     FullyAvailableBlocks[AV.BB] = AvailabilityState::Available;
@@ -1570,7 +1570,7 @@ bool GVNPass::PerformLoadPRE(LoadInst *Load, AvailValInBlkVect &ValuesPerBlock,
   // The edge from Pred to LoadBB is a critical edge, another successor of Pred
   // contains a load can be moved to Pred. This data structure maps the Pred to
   // the movable load.
-  MapVector<BasicBlock *, LoadInst *> CriticalEdgePredAndLoad;
+  SmallMapVector<BasicBlock *, LoadInst *, 8> CriticalEdgePredAndLoad;
   for (BasicBlock *Pred : predecessors(LoadBB)) {
     // If any predecessor block is an EH pad that does not allow non-PHI
     // instructions before the terminator, we can't PRE the load.
@@ -1819,7 +1819,7 @@ bool GVNPass::performLoopLoadPRE(LoadInst *Load,
     return false;
 
   // TODO: Support critical edge splitting if blocker has more than 1 successor.
-  MapVector<BasicBlock *, Value *> AvailableLoads;
+  SmallMapVector<BasicBlock *, Value *, 8> AvailableLoads;
   AvailableLoads[LoopBlock] = LoadPtr;
   AvailableLoads[Preheader] = LoadPtr;
 

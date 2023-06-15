@@ -1298,7 +1298,7 @@ public:
   /// \returns The smallest bitwidth each instruction can be represented with.
   /// The vector equivalents of these instructions should be truncated to this
   /// type.
-  const MapVector<Instruction *, uint64_t> &getMinimalBitwidths() const {
+  const SmallMapVector<Instruction *, uint64_t, 8> &getMinimalBitwidths() const {
     return MinBWs;
   }
 
@@ -1755,7 +1755,7 @@ private:
   /// Map of scalar integer values to the smallest bitwidth they can be legally
   /// represented as. The vector equivalents of these values should be truncated
   /// to this type.
-  MapVector<Instruction *, uint64_t> MinBWs;
+  SmallMapVector<Instruction *, uint64_t, 8> MinBWs;
 
   /// A type representing the costs for instructions if they were to be
   /// scalarized rather than vectorized. The entries are Instruction-Cost

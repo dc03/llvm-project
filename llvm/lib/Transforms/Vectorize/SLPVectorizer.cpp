@@ -1913,7 +1913,7 @@ public:
       // most optimal set of operands. The first unsigned is a counter for
       // voting, the second unsigned is the counter of lanes with instructions
       // with same/alternate opcodes and same parent basic block.
-      MapVector<unsigned, std::pair<unsigned, unsigned>> HashMap;
+      SmallMapVector<unsigned, std::pair<unsigned, unsigned>, 8> HashMap;
       // Try to be closer to the original results, if we have multiple lanes
       // with same cost. If 2 lanes have the same cost, use the one with the
       // lowest index.
@@ -3532,7 +3532,7 @@ private:
   };
 
   /// Attaches the BlockScheduling structures to basic blocks.
-  MapVector<BasicBlock *, std::unique_ptr<BlockScheduling>> BlocksSchedules;
+  SmallMapVector<BasicBlock *, std::unique_ptr<BlockScheduling>, 8> BlocksSchedules;
 
   /// Performs the "real" scheduling. Done before vectorization is actually
   /// performed in a basic block.
@@ -3588,7 +3588,7 @@ private:
   /// where "width" indicates the minimum bit width and "signed" is True if the
   /// value must be signed-extended, rather than zero-extended, back to its
   /// original width.
-  MapVector<Value *, std::pair<uint64_t, bool>> MinBWs;
+  SmallMapVector<Value *, std::pair<uint64_t, bool>, 8> MinBWs;
 };
 
 } // end namespace slpvectorizer
@@ -12643,7 +12643,7 @@ class HorizontalReduction {
   /// Maps reduced value to the corresponding reduction operation.
   DenseMap<Value *, SmallVector<Instruction *>> ReducedValsToOps;
   // Use map vector to make stable output.
-  MapVector<Instruction *, Value *> ExtraArgs;
+  SmallMapVector<Instruction *, Value *, 8> ExtraArgs;
   WeakTrackingVH ReductionRoot;
   /// The type of reduction operation.
   RecurKind RdxKind;
@@ -13015,7 +13015,7 @@ public:
     // instruction op id and/or alternate op id, plus do extra analysis for
     // loads (grouping them by the distabce between pointers) and cmp
     // instructions (grouping them by the predicate).
-    MapVector<size_t, MapVector<size_t, MapVector<Value *, unsigned>>>
+    MapVector<size_t, MapVector<size_t, SmallMapVector<Value *, unsigned, 8>>>
         PossibleReducedVals;
     initReductionOps(Root);
     DenseMap<Value *, SmallVector<LoadInst *>> LoadsMap;
@@ -13309,7 +13309,7 @@ public:
           AllowHorRdxIdenityOptimization && RdxKind != RecurKind::Mul &&
           RdxKind != RecurKind::FMul && RdxKind != RecurKind::FMulAdd;
       // Gather same values.
-      MapVector<Value *, unsigned> SameValuesCounter;
+      SmallMapVector<Value *, unsigned, 8> SameValuesCounter;
       if (IsSupportedHorRdxIdentityOp)
         for (Value *V : Candidates)
           ++SameValuesCounter.insert(std::make_pair(V, 0)).first->second;
@@ -13876,7 +13876,7 @@ private:
   /// horizontal reduction analysis.
   Value *emitReusedOps(Value *VectorizedValue, IRBuilderBase &Builder,
                        ArrayRef<Value *> VL,
-                       const MapVector<Value *, unsigned> &SameValuesCounter,
+                       const SmallMapVector<Value *, unsigned, 8> &SameValuesCounter,
                        const DenseMap<Value *, Value *> &TrackedToOrig) {
     assert(IsSupportedHorRdxIdentityOp &&
            "The optimization of matched scalar identity horizontal reductions "

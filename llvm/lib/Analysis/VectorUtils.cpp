@@ -532,7 +532,7 @@ void llvm::processShuffleMasks(
   }
 }
 
-MapVector<Instruction *, uint64_t>
+SmallMapVector<Instruction *, uint64_t, 8>
 llvm::computeMinimumValueSizes(ArrayRef<BasicBlock *> Blocks, DemandedBits &DB,
                                const TargetTransformInfo *TTI) {
 
@@ -545,7 +545,7 @@ llvm::computeMinimumValueSizes(ArrayRef<BasicBlock *> Blocks, DemandedBits &DB,
   SmallPtrSet<Value *, 16> Visited;
   DenseMap<Value *, uint64_t> DBits;
   SmallPtrSet<Instruction *, 4> InstructionSet;
-  MapVector<Instruction *, uint64_t> MinBWs;
+  SmallMapVector<Instruction *, uint64_t, 8> MinBWs;
 
   // Determine the roots. We work bottom-up, from truncs or icmps.
   bool SeenExtFromIllegalType = false;
@@ -590,7 +590,7 @@ llvm::computeMinimumValueSizes(ArrayRef<BasicBlock *> Blocks, DemandedBits &DB,
     // If we encounter a type that is larger than 64 bits, we can't represent
     // it so bail out.
     if (DB.getDemandedBits(I).getBitWidth() > 64)
-      return MapVector<Instruction *, uint64_t>();
+      return SmallMapVector<Instruction *, uint64_t, 8>();
 
     uint64_t V = DB.getDemandedBits(I).getZExtValue();
     DBits[Leader] |= V;

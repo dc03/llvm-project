@@ -168,19 +168,19 @@ namespace {
 
 struct GCPtrLivenessData {
   /// Values defined in this block.
-  MapVector<BasicBlock *, SetVector<Value *>> KillSet;
+  MapVector<BasicBlock *, SmallSetVector<Value *, 8>> KillSet;
 
   /// Values used in this block (and thus live); does not included values
   /// killed within this block.
-  MapVector<BasicBlock *, SetVector<Value *>> LiveSet;
+  MapVector<BasicBlock *, SmallSetVector<Value *, 8>> LiveSet;
 
   /// Values live into this basic block (i.e. used by any
   /// instruction in this basic block or ones reachable from here)
-  MapVector<BasicBlock *, SetVector<Value *>> LiveIn;
+  MapVector<BasicBlock *, SmallSetVector<Value *, 8>> LiveIn;
 
   /// Values live out of this basic block (i.e. live into
   /// any successor block)
-  MapVector<BasicBlock *, SetVector<Value *>> LiveOut;
+  MapVector<BasicBlock *, SmallSetVector<Value *, 8>> LiveOut;
 };
 
 // The type of the internal cache used inside the findBasePointers family
@@ -193,10 +193,10 @@ struct GCPtrLivenessData {
 // Generally, after the execution of a full findBasePointer call, only the
 // base relation will remain.  Internally, we add a mixture of the two
 // types, then update all the second type to the first type
-using DefiningValueMapTy = MapVector<Value *, Value *>;
-using IsKnownBaseMapTy = MapVector<Value *, bool>;
-using PointerToBaseTy = MapVector<Value *, Value *>;
-using StatepointLiveSetTy = SetVector<Value *>;
+using DefiningValueMapTy = SmallMapVector<Value *, Value *, 8>;
+using IsKnownBaseMapTy = SmallMapVector<Value *, bool, 16>;
+using PointerToBaseTy = SmallMapVector<Value *, Value *, 8>;
+using StatepointLiveSetTy = SmallSetVector<Value *, 8>;
 using RematerializedValueMapTy =
     MapVector<AssertingVH<Instruction>, AssertingVH<Value>>;
 
@@ -3160,7 +3160,7 @@ bool RewriteStatepointsForGC::runOnFunction(Function &F, DominatorTree &DT,
 /// the live-out set of the basic block
 static void computeLiveInValues(BasicBlock::reverse_iterator Begin,
                                 BasicBlock::reverse_iterator End,
-                                SetVector<Value *> &LiveTmp, GCStrategy *GC) {
+                                SmallSetVector<Value *, 8> &LiveTmp, GCStrategy *GC) {
   for (auto &I : make_range(Begin, End)) {
     // KILL/Def - Remove this definition from LiveIn
     LiveTmp.remove(&I);
@@ -3191,7 +3191,7 @@ static void computeLiveInValues(BasicBlock::reverse_iterator Begin,
   }
 }
 
-static void computeLiveOutSeed(BasicBlock *BB, SetVector<Value *> &LiveTmp,
+static void computeLiveOutSeed(BasicBlock *BB, SmallSetVector<Value *, 8> &LiveTmp,
                                GCStrategy *GC) {
   for (BasicBlock *Succ : successors(BB)) {
     for (auto &I : *Succ) {
@@ -3208,8 +3208,8 @@ static void computeLiveOutSeed(BasicBlock *BB, SetVector<Value *> &LiveTmp,
   }
 }
 
-static SetVector<Value *> computeKillSet(BasicBlock *BB, GCStrategy *GC) {
-  SetVector<Value *> KillSet;
+static SmallSetVector<Value *, 8> computeKillSet(BasicBlock *BB, GCStrategy *GC) {
+  SmallSetVector<Value *, 8> KillSet;
   for (Instruction &I : *BB)
     if (isHandledGCPointerType(I.getType(), GC))
       KillSet.insert(&I);
@@ -3219,7 +3219,7 @@ static SetVector<Value *> computeKillSet(BasicBlock *BB, GCStrategy *GC) {
 #ifndef NDEBUG
 /// Check that the items in 'Live' dominate 'TI'.  This is used as a basic
 /// validation check for the liveness computation.
-static void checkBasicSSA(DominatorTree &DT, SetVector<Value *> &Live,
+static void checkBasicSSA(DominatorTree &DT, SmallSetVector<Value *, 8> &Live,
                           Instruction *TI, bool TermOkay = false) {
   for (Value *V : Live) {
     if (auto *I = dyn_cast<Instruction>(V)) {
@@ -3260,7 +3260,7 @@ static void computeLiveInValues(DominatorTree &DT, Function &F,
       assert(!Data.LiveSet[&BB].count(Kill) && "live set contains kill");
 #endif
 
-    Data.LiveOut[&BB] = SetVector<Value *>();
+    Data.LiveOut[&BB] = SmallSetVector<Value *, 8>();
     computeLiveOutSeed(&BB, Data.LiveOut[&BB], GC);
     Data.LiveIn[&BB] = Data.LiveSet[&BB];
     Data.LiveIn[&BB].set_union(Data.LiveOut[&BB]);
@@ -3275,7 +3275,7 @@ static void computeLiveInValues(DominatorTree &DT, Function &F,
 
     // Compute our new liveout set, then exit early if it hasn't changed despite
     // the contribution of our successor.
-    SetVector<Value *> LiveOut = Data.LiveOut[BB];
+    SmallSetVector<Value *, 8> LiveOut = Data.LiveOut[BB];
     const auto OldLiveOutSize = LiveOut.size();
     for (BasicBlock *Succ : successors(BB)) {
       assert(Data.LiveIn.count(Succ));
@@ -3291,12 +3291,12 @@ static void computeLiveInValues(DominatorTree &DT, Function &F,
     Data.LiveOut[BB] = LiveOut;
 
     // Apply the effects of this basic block
-    SetVector<Value *> LiveTmp = LiveOut;
+    SmallSetVector<Value *, 8> LiveTmp = LiveOut;
     LiveTmp.set_union(Data.LiveSet[BB]);
     LiveTmp.set_subtract(Data.KillSet[BB]);
 
     assert(Data.LiveIn.count(BB));
-    const SetVector<Value *> &OldLiveIn = Data.LiveIn[BB];
+    const SmallSetVector<Value *, 8> &OldLiveIn = Data.LiveIn[BB];
     // assert: OldLiveIn is a subset of LiveTmp
     if (OldLiveIn.size() != LiveTmp.size()) {
       Data.LiveIn[BB] = LiveTmp;
@@ -3318,7 +3318,7 @@ static void findLiveSetAtInst(Instruction *Inst, GCPtrLivenessData &Data,
 
   // Note: The copy is intentional and required
   assert(Data.LiveOut.count(BB));
-  SetVector<Value *> LiveOut = Data.LiveOut[BB];
+  SmallSetVector<Value *, 8> LiveOut = Data.LiveOut[BB];
 
   // We want to handle the statepoint itself oddly.  It's
   // call result is not live (normal), nor are it's arguments

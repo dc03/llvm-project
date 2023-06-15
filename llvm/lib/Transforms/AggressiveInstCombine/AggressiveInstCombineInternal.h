@@ -76,7 +76,7 @@ class TruncInstCombine {
   /// processed TruncInst. It maps each instruction in the graph to its Info
   /// structure. The map is ordered such that each instruction appears before
   /// all other instructions in the graph that uses it.
-  MapVector<Instruction *, Info> InstInfoMap;
+  SmallMapVector<Instruction *, Info, 8> InstInfoMap;
 
 public:
   TruncInstCombine(AssumptionCache &AC, TargetLibraryInfo &TLI,

@@ -563,7 +563,7 @@ protected:
       const SmallVectorImpl<CallBase *> &Candidates, const Function &F,
       bool Hot);
   void promoteMergeNotInlinedContextSamples(
-      MapVector<CallBase *, const FunctionSamples *> NonInlinedCallSites,
+      SmallMapVector<CallBase *, const FunctionSamples *, 8> NonInlinedCallSites,
       const Function &F);
   std::vector<Function *> buildFunctionOrder(Module &M, LazyCallGraph &CG);
   std::unique_ptr<ProfiledCallGraph> buildProfiledCallGraph(Module &M);
@@ -1176,7 +1176,7 @@ bool SampleProfileLoader::inlineHotFunctions(
          "ProfAccForSymsInList should be false when profile-sample-accurate "
          "is enabled");
 
-  MapVector<CallBase *, const FunctionSamples *> LocalNotInlinedCallSites;
+  SmallMapVector<CallBase *, const FunctionSamples *, 8> LocalNotInlinedCallSites;
   bool Changed = false;
   bool LocalChanged = true;
   while (LocalChanged) {
@@ -1477,7 +1477,7 @@ bool SampleProfileLoader::inlineHotFunctionsWithPriority(
   if (ExternalInlineAdvisor)
     SizeLimit = std::numeric_limits<unsigned>::max();
 
-  MapVector<CallBase *, const FunctionSamples *> LocalNotInlinedCallSites;
+  SmallMapVector<CallBase *, const FunctionSamples *, 8> LocalNotInlinedCallSites;
 
   // Perform iterative BFS call site prioritized inlining
   bool Changed = false;
@@ -1573,7 +1573,7 @@ bool SampleProfileLoader::inlineHotFunctionsWithPriority(
 }
 
 void SampleProfileLoader::promoteMergeNotInlinedContextSamples(
-    MapVector<CallBase *, const FunctionSamples *> NonInlinedCallSites,
+    SmallMapVector<CallBase *, const FunctionSamples *, 8> NonInlinedCallSites,
     const Function &F) {
   // Accumulate not inlined callsite information into notInlinedSamples
   for (const auto &Pair : NonInlinedCallSites) {

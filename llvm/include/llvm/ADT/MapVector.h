@@ -339,7 +339,7 @@ void MapVector<KeyT, ValueT, MapType, VectorType, N>::remove_if(Function Pred) {
 /// size.
 template <typename KeyT, typename ValueT, unsigned N>
 struct SmallMapVector
-    : MapVector<KeyT, ValueT, SmallDenseMap<KeyT, unsigned, N>,
+    : MapVector<KeyT, ValueT, DenseMap<KeyT, unsigned>,
                 SmallVector<std::pair<KeyT, ValueT>, N>, N> {
 };
 

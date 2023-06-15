@@ -347,8 +347,8 @@ private:
   /// AvailableLoads (connected by Phis if needed).
   void eliminatePartiallyRedundantLoad(
       LoadInst *Load, AvailValInBlkVect &ValuesPerBlock,
-      MapVector<BasicBlock *, Value *> &AvailableLoads,
-      MapVector<BasicBlock *, LoadInst *> *CriticalEdgePredAndLoad);
+      SmallMapVector<BasicBlock *, Value *, 8> &AvailableLoads,
+      SmallMapVector<BasicBlock *, LoadInst *, 8> *CriticalEdgePredAndLoad);
 
   // Other helper routines
   bool processInstruction(Instruction *I);
