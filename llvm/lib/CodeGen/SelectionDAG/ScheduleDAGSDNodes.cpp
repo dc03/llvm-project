@@ -344,7 +344,7 @@ void ScheduleDAGSDNodes::BuildSchedUnits() {
 
   // Add all nodes in depth first order.
   SmallVector<SDNode*, 64> Worklist;
-  SmallPtrSet<SDNode*, 32> Visited;
+  SmallDenseSet<SDNode *, 64> Visited;
   Worklist.push_back(DAG->getRoot().getNode());
   Visited.insert(DAG->getRoot().getNode());
 
@@ -376,8 +376,8 @@ void ScheduleDAGSDNodes::BuildSchedUnits() {
       N = N->getOperand(N->getNumOperands()-1).getNode();
       assert(N->getNodeId() == -1 && "Node already inserted!");
       N->setNodeId(NodeSUnit->NodeNum);
-      if (N->isMachineOpcode() && TII->get(N->getMachineOpcode()).isCall())
-        NodeSUnit->isCall = true;
+      NodeSUnit->isCall =
+          N->isMachineOpcode() && TII->get(N->getMachineOpcode()).isCall();
     }
 
     // Scan down to find any glued succs.
@@ -393,8 +393,8 @@ void ScheduleDAGSDNodes::BuildSchedUnits() {
           assert(N->getNodeId() == -1 && "Node already inserted!");
           N->setNodeId(NodeSUnit->NodeNum);
           N = U;
-          if (N->isMachineOpcode() && TII->get(N->getMachineOpcode()).isCall())
-            NodeSUnit->isCall = true;
+          NodeSUnit->isCall =
+              N->isMachineOpcode() && TII->get(N->getMachineOpcode()).isCall();
           break;
         }
       if (!HasGlueUse) break;
@@ -406,8 +406,7 @@ void ScheduleDAGSDNodes::BuildSchedUnits() {
     // Schedule zero-latency TokenFactor below any nodes that may increase the
     // schedule height. Otherwise, ancestors of the TokenFactor may appear to
     // have false stalls.
-    if (NI->getOpcode() == ISD::TokenFactor)
-      NodeSUnit->isScheduleLow = true;
+    NodeSUnit->isScheduleLow = NI->getOpcode() == ISD::TokenFactor;
 
     // If there are glue operands involved, N is now the bottom-most node
     // of the sequence of nodes that are glued together.
@@ -424,8 +423,7 @@ void ScheduleDAGSDNodes::BuildSchedUnits() {
   }
 
   // Find all call operands.
-  while (!CallSUnits.empty()) {
-    SUnit *SU = CallSUnits.pop_back_val();
+  for (SUnit *SU : CallSUnits) {
     for (const SDNode *SUNode = SU->getNode(); SUNode;
          SUNode = SUNode->getGluedNode()) {
       if (SUNode->getOpcode() != ISD::CopyToReg)
@@ -436,6 +434,7 @@ void ScheduleDAGSDNodes::BuildSchedUnits() {
       SrcSU->isCallOp = true;
     }
   }
+  CallSUnits.clear();
 }
 
 void ScheduleDAGSDNodes::AddSchedEdges() {
@@ -457,8 +456,7 @@ void ScheduleDAGSDNodes::AddSchedEdges() {
           break;
         }
       }
-      if (MCID.isCommutable())
-        SU.isCommutable = true;
+      SU.isCommutable = MCID.isCommutable();
     }
 
     // Find all predecessors and successors of the group.
@@ -469,8 +467,8 @@ void ScheduleDAGSDNodes::AddSchedEdges() {
         unsigned NumUsed = InstrEmitter::CountResults(N);
         while (NumUsed != 0 && !N->hasAnyUseOfValue(NumUsed - 1))
           --NumUsed;    // Skip over unused values at the end.
-        if (NumUsed > TII->get(N->getMachineOpcode()).getNumDefs())
-          SU.hasPhysRegDefs = true;
+        SU.hasPhysRegDefs =
+            NumUsed > TII->get(N->getMachineOpcode()).getNumDefs();
       }
 
       for (unsigned i = 0, e = N->getNumOperands(); i != e; ++i) {
@@ -551,12 +549,10 @@ void ScheduleDAGSDNodes::RegDefIter::InitNodeNumDefs() {
     return;
 
   if (!Node->isMachineOpcode()) {
-    if (Node->getOpcode() == ISD::CopyFromReg)
-      NodeNumDefs = 1;
-    else
-      NodeNumDefs = 0;
+    NodeNumDefs = Node->getOpcode() == ISD::CopyFromReg;
     return;
   }
+
   unsigned POpc = Node->getMachineOpcode();
   if (POpc == TargetOpcode::IMPLICIT_DEF) {
     // No register need be allocated for this.
