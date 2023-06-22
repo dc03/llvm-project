@@ -70,8 +70,14 @@ public:
     return *this;
   }
 
-  CoalescingBitVector(ThisT &&Other) = delete;
-  ThisT &operator=(ThisT &&Other) = delete;
+  CoalescingBitVector(ThisT &&Other) noexcept
+    : Alloc(Other.Alloc), Intervals(std::move_if_noexcept(Other.Intervals)) {}
+
+  ThisT &operator=(ThisT &&Other) noexcept {
+    Alloc = Other.Alloc;
+    Intervals = std::move_if_noexcept(Other.Intervals);
+    return *this;
+  }
 
   /// @}
 

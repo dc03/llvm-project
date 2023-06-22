@@ -846,7 +846,7 @@ private:
   };
 
   using VarLocInMBB =
-      SmallDenseMap<const MachineBasicBlock *, std::unique_ptr<VarLocSet>>;
+      SmallDenseMap<const MachineBasicBlock *, VarLocSet>;
   struct TransferDebugPair {
     MachineInstr *TransferInst; ///< Instruction where this transfer occurs.
     LocIndex LocationID;        ///< Location number for the transfer dest.
@@ -987,17 +987,14 @@ private:
                                 const VarLocMap &VarLocIDs);
 
   VarLocSet &getVarLocsInMBB(const MachineBasicBlock *MBB, VarLocInMBB &Locs) {
-    std::unique_ptr<VarLocSet> &VLS = Locs[MBB];
-    if (!VLS)
-      VLS = std::make_unique<VarLocSet>(Alloc);
-    return *VLS;
+    return Locs.try_emplace(MBB, Alloc).first->second;
   }
 
   const VarLocSet &getVarLocsInMBB(const MachineBasicBlock *MBB,
                                    const VarLocInMBB &Locs) const {
     auto It = Locs.find(MBB);
     assert(It != Locs.end() && "MBB not in map");
-    return *It->second;
+    return It->second;
   }
 
   /// Tests whether this instruction is a spill to a stack location.
@@ -1202,12 +1199,12 @@ void VarLocBasedLDV::collectIDsForRegs(VarLocsInRange &Collected,
                                        const VarLocSet &CollectFrom,
                                        const VarLocMap &VarLocIDs) {
   assert(!Regs.empty() && "Nothing to collect");
-  SmallVector<Register, 32> SortedRegs;
-  append_range(SortedRegs, Regs);
-  array_pod_sort(SortedRegs.begin(), SortedRegs.end());
-  auto It = CollectFrom.find(LocIndex::rawIndexForReg(SortedRegs.front()));
+  // SmallVector<Register, 32> SortedRegs;
+  // append_range(SortedRegs, Regs);
+  // std::sort(SortedRegs.begin(), SortedRegs.end());
+  auto It = CollectFrom.find(LocIndex::rawIndexForReg(*std::min_element(Regs.begin(), Regs.end())));
   auto End = CollectFrom.end();
-  for (Register Reg : SortedRegs) {
+  for (Register Reg : Regs) {
     // The half-open interval [FirstIndexForReg, FirstInvalidIndex) contains
     // all possible VarLoc IDs for VarLocs with MLs of kind RegisterKind which
     // live in Reg.
@@ -1593,8 +1590,7 @@ void VarLocBasedLDV::transferRegisterDef(MachineInstr &MI,
       for (MCRegAliasIterator RAI(MO.getReg(), TRI, true); RAI.isValid(); ++RAI)
         // FIXME: Can we break out of this loop early if no insertion occurs?
         DeadRegs.insert(*RAI);
-      RegSetInstrs.erase(MO.getReg());
-      RegSetInstrs.insert({MO.getReg(), &MI});
+      RegSetInstrs[MO.getReg()] = &MI;
     } else if (MO.isRegMask()) {
       RegMasks.push_back(MO.getRegMask());
     }
@@ -2042,7 +2038,7 @@ bool VarLocBasedLDV::join(
 
     // Just copy over the Out locs to incoming locs for the first visited
     // predecessor, and for all other predecessors join the Out locs.
-    VarLocSet &OutLocVLS = *OL->second;
+    VarLocSet &OutLocVLS = OL->second;
     if (!NumVisited)
       InLocsT = OutLocVLS;
     else
@@ -2101,7 +2097,7 @@ void VarLocBasedLDV::flushPendingLocs(VarLocInMBB &PendingInLocs,
   for (auto &Iter : PendingInLocs) {
     // Map is keyed on a constant pointer, unwrap it so we can insert insts.
     auto &MBB = const_cast<MachineBasicBlock &>(*Iter.first);
-    VarLocSet &Pending = *Iter.second;
+    VarLocSet &Pending = Iter.second;
 
     SmallVector<VarLoc, 32> VarLocs;
     collectAllVarLocs(VarLocs, Pending, VarLocIDs);
