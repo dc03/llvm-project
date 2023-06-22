@@ -1199,12 +1199,12 @@ void VarLocBasedLDV::collectIDsForRegs(VarLocsInRange &Collected,
                                        const VarLocSet &CollectFrom,
                                        const VarLocMap &VarLocIDs) {
   assert(!Regs.empty() && "Nothing to collect");
-  SmallVector<Register, 32> SortedRegs;
-  append_range(SortedRegs, Regs);
-  array_pod_sort(SortedRegs.begin(), SortedRegs.end());
-  auto It = CollectFrom.find(LocIndex::rawIndexForReg(SortedRegs.front()));
+  // SmallVector<Register, 32> SortedRegs;
+  // append_range(SortedRegs, Regs);
+  // std::sort(SortedRegs.begin(), SortedRegs.end());
+  auto It = CollectFrom.find(LocIndex::rawIndexForReg(*std::min_element(Regs.begin(), Regs.end())));
   auto End = CollectFrom.end();
-  for (Register Reg : SortedRegs) {
+  for (Register Reg : Regs) {
     // The half-open interval [FirstIndexForReg, FirstInvalidIndex) contains
     // all possible VarLoc IDs for VarLocs with MLs of kind RegisterKind which
     // live in Reg.
