@@ -183,7 +183,7 @@ namespace {
 
 // Max out the number of statically allocated elements in DefinedRegsSet, as
 // this prevents fallback to std::set::count() operations.
-using DefinedRegsSet = SmallSet<Register, 32>;
+using DefinedRegsSet = SmallDenseSet<Register, 32>;
 
 // The IDs in this set correspond to MachineLocs in VarLocs, as well as VarLocs
 // that represent Entry Values; every VarLoc in the set will also appear
@@ -270,11 +270,11 @@ struct LocIndex {
 };
 
 // Simple Set for storing all the VarLoc Indices at a Location bucket.
-using VarLocsInRange = SmallSet<LocIndex::u32_index_t, 32>;
+using VarLocsInRange = SmallDenseSet<LocIndex::u32_index_t, 32>;
 // Vector of all `LocIndex`s for a given VarLoc; the same Location should not
 // appear in any two of these, as each VarLoc appears at most once in any
 // Location bucket.
-using LocIndices = SmallVector<LocIndex, 2>;
+using LocIndices = SmallVector<LocIndex, 8>;
 
 class VarLocBasedLDV : public LDVImpl {
 private:
@@ -791,7 +791,7 @@ private:
 
     /// Map a location to a vector which holds VarLocs which live in that
     /// location.
-    SmallDenseMap<LocIndex::u32_location_t, std::vector<VarLoc>> Loc2Vars;
+    DenseMap<LocIndex::u32_location_t, std::vector<VarLoc>> Loc2Vars;
 
   public:
     /// Retrieve LocIndices for \p VL.
@@ -855,7 +855,7 @@ private:
   // Types for recording Entry Var Locations emitted by a single MachineInstr,
   // as well as recording MachineInstr which last defined a register.
   using InstToEntryLocMap = std::multimap<const MachineInstr *, LocIndex>;
-  using RegDefToInstMap = DenseMap<Register, MachineInstr *>;
+  using RegDefToInstMap = SmallDenseMap<Register, MachineInstr *, 16>;
 
   // Types for recording sets of variable fragments that overlap. For a given
   // local variable, we record all other fragments of that variable that could
@@ -868,7 +868,7 @@ private:
   // Helper while building OverlapMap, a map of all fragments seen for a given
   // DILocalVariable.
   using VarToFragments =
-      DenseMap<const DILocalVariable *, SmallSet<FragmentInfo, 4>>;
+      DenseMap<const DILocalVariable *, SmallDenseSet<FragmentInfo, 2>>;
 
   /// Collects all VarLocs from \p CollectFrom. Each unique VarLoc is added
   /// to \p Collected once, in order of insertion into \p VarLocIDs.
@@ -894,9 +894,9 @@ private:
     VarLocSet::Allocator &Alloc;
     VarLocSet VarLocs;
     // Map the DebugVariable to recent primary location ID.
-    SmallDenseMap<DebugVariable, LocIndices, 8> Vars;
+    DenseMap<DebugVariable, LocIndices> Vars;
     // Map the DebugVariable to recent backup location ID.
-    SmallDenseMap<DebugVariable, LocIndices, 8> EntryValuesBackupVars;
+    DenseMap<DebugVariable, LocIndices> EntryValuesBackupVars;
     OverlapMap &OverlappingFragments;
 
   public:
@@ -1951,9 +1951,9 @@ void VarLocBasedLDV::accumulateFragmentMap(MachineInstr &MI,
   // of seen fragments, record no overlaps for the current one, and return.
   auto SeenIt = SeenFragments.find(MIVar.getVariable());
   if (SeenIt == SeenFragments.end()) {
-    SmallSet<FragmentInfo, 4> OneFragment;
+    SmallDenseSet<FragmentInfo, 2> OneFragment;
     OneFragment.insert(ThisFragment);
-    SeenFragments.insert({MIVar.getVariable(), OneFragment});
+    SeenFragments.insert({MIVar.getVariable(), std::move(OneFragment)});
 
     OverlappingFragments.insert({{MIVar.getVariable(), ThisFragment}, {}});
     return;
