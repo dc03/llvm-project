@@ -2249,10 +2249,10 @@ bool VarLocBasedLDV::ExtendRanges(MachineFunction &MF,
 
   DenseMap<unsigned int, MachineBasicBlock *> OrderToBB;
   DenseMap<MachineBasicBlock *, unsigned int> BBToOrder;
-  std::priority_queue<unsigned int, std::vector<unsigned int>,
+  std::priority_queue<unsigned int, SmallVector<unsigned int>,
                       std::greater<unsigned int>>
       Worklist;
-  std::priority_queue<unsigned int, std::vector<unsigned int>,
+  std::priority_queue<unsigned int, SmallVector<unsigned int>,
                       std::greater<unsigned int>>
       Pending;
 
