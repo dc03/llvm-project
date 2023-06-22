@@ -1590,8 +1590,7 @@ void VarLocBasedLDV::transferRegisterDef(MachineInstr &MI,
       for (MCRegAliasIterator RAI(MO.getReg(), TRI, true); RAI.isValid(); ++RAI)
         // FIXME: Can we break out of this loop early if no insertion occurs?
         DeadRegs.insert(*RAI);
-      RegSetInstrs.erase(MO.getReg());
-      RegSetInstrs.insert({MO.getReg(), &MI});
+      RegSetInstrs[MO.getReg()] = &MI;
     } else if (MO.isRegMask()) {
       RegMasks.push_back(MO.getRegMask());
     }
