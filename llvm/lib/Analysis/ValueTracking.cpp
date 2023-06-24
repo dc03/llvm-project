@@ -2333,6 +2333,9 @@ static bool isKnownNonNullFromDominatingCondition(const Value *V,
     SmallVector<const User *, 4> WorkList;
     SmallPtrSet<const User *, 4> Visited;
     for (const auto *CmpU : U->users()) {
+      if (NumUsesExplored >= DomConditionsMaxUses)
+        break;
+      NumUsesExplored++;
       assert(WorkList.empty() && "Should be!");
       if (Visited.insert(CmpU).second)
         WorkList.push_back(CmpU);
@@ -2346,9 +2349,13 @@ static bool isKnownNonNullFromDominatingCondition(const Value *V,
         // TODO: Support similar logic of OR and EQ predicate?
         if (NonNullIfTrue)
           if (match(Curr, m_LogicalAnd(m_Value(), m_Value()))) {
-            for (const auto *CurrU : Curr->users())
+            for (const auto *CurrU : Curr->users()) {
+              if (NumUsesExplored >= DomConditionsMaxUses)
+                break;
+              NumUsesExplored++;
               if (Visited.insert(CurrU).second)
                 WorkList.push_back(CurrU);
+            }
             continue;
           }
 
