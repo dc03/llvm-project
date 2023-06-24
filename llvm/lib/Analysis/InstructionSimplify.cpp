@@ -4011,7 +4011,7 @@ static Value *simplifyICmpInst(unsigned Predicate, Value *LHS, Value *RHS,
   // If the comparison is with the result of a phi instruction, check whether
   // doing the compare with each incoming phi value yields a common result.
   if (isa<PHINode>(LHS) || isa<PHINode>(RHS))
-    if (Value *V = threadCmpOverPHI(Pred, LHS, RHS, Q, MaxRecurse))
+    if (Value *V = threadCmpOverPHI(Pred, LHS, RHS, Q, MaxRecurse > 1 ? 1 : MaxRecurse))
       return V;
 
   return nullptr;
@@ -4232,7 +4232,7 @@ static Value *simplifyFCmpInst(unsigned Predicate, Value *LHS, Value *RHS,
   // If the comparison is with the result of a phi instruction, check whether
   // doing the compare with each incoming phi value yields a common result.
   if (isa<PHINode>(LHS) || isa<PHINode>(RHS))
-    if (Value *V = threadCmpOverPHI(Pred, LHS, RHS, Q, MaxRecurse))
+    if (Value *V = threadCmpOverPHI(Pred, LHS, RHS, Q, MaxRecurse > 1 ? 1 : MaxRecurse))
       return V;
 
   return nullptr;
