@@ -99,9 +99,8 @@ bool Argument::hasNonNullAttr(bool AllowUndefOrPoison) const {
       (AllowUndefOrPoison ||
        getParent()->hasParamAttribute(getArgNo(), Attribute::NoUndef)))
     return true;
-  else if (getDereferenceableBytes() > 0 &&
-           !NullPointerIsDefined(getParent(),
-                                 getType()->getPointerAddressSpace()))
+  else if (getParent()->hasParamAttribute(getArgNo(), Attribute::Dereferenceable) &&
+           !NullPointerIsDefined(getParent(), getType()->getPointerAddressSpace()))
     return true;
   return false;
 }
