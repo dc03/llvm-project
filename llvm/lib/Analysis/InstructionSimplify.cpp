@@ -567,6 +567,9 @@ static Value *threadCmpOverPHI(CmpInst::Predicate Pred, Value *LHS, Value *RHS,
   if (!MaxRecurse--)
     return nullptr;
 
+  // Prevent this function from being recursively called more than once.
+  MaxRecurse = 0;
+
   // Make sure the phi is on the LHS.
   if (!isa<PHINode>(LHS)) {
     std::swap(LHS, RHS);
