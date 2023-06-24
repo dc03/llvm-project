@@ -2566,15 +2566,16 @@ bool isKnownNonZero(const Value *V, const APInt &DemandedElts, unsigned Depth,
   }
 
   if (auto *I = dyn_cast<Instruction>(V)) {
-    if (MDNode *Ranges = Q.IIQ.getMetadata(I, LLVMContext::MD_range)) {
-      // If the possible ranges don't contain zero, then the value is
-      // definitely non-zero.
-      if (auto *Ty = dyn_cast<IntegerType>(V->getType())) {
-        const APInt ZeroValue(Ty->getBitWidth(), 0);
-        if (rangeMetadataExcludesValue(Ranges, ZeroValue))
-          return true;
+    if (isa<LoadInst>(I) || isa<CallInst>(I))
+      if (MDNode *Ranges = Q.IIQ.getMetadata(I, LLVMContext::MD_range)) {
+        // If the possible ranges don't contain zero, then the value is
+        // definitely non-zero.
+        if (auto *Ty = dyn_cast<IntegerType>(V->getType())) {
+          const APInt ZeroValue(Ty->getBitWidth(), 0);
+          if (rangeMetadataExcludesValue(Ranges, ZeroValue))
+            return true;
+        }
       }
-    }
   }
 
   if (!isa<Constant>(V) && isKnownNonZeroFromAssume(V, Q))
