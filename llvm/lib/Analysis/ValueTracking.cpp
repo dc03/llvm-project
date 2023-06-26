@@ -573,34 +573,16 @@ static std::optional<bool> cmpExcludesZero(CmpInst::Predicate Pred, const Value 
     return true;
 
   // Special-case v != 0 to also handle v != null.
-  if (Pred == ICmpInst::ICMP_NE)
-    return match(RHS, m_Zero());
+  if (Pred == ICmpInst::ICMP_NE && match(RHS, m_Zero()))
+    return true;
 
   // All other predicates - rely on generic ConstantRange handling.
   const APInt *C;
   if (!match(RHS, m_APInt(C)))
     return std::nullopt;
 
-  APInt Zero = APInt::getZero(C->getBitWidth());
-
   ConstantRange TrueValues = ConstantRange::makeExactICmpRegion(Pred, *C);
-  ConstantRange FalseValues = ConstantRange::makeExactICmpRegion(CmpInst::getInversePredicate(Pred), *C);
-  bool OperationIsTrue = TrueValues.contains(Zero);
-  bool OperationIsFalse = FalseValues.contains(Zero);
-
-  // If the operation will return true when the operand is zero.
-  if (OperationIsTrue && !OperationIsFalse)
-    return false;
-
-  // If the operation will return false when the operand is zero.
-  if (!OperationIsTrue && OperationIsFalse)
-    return true;
-
-  // Here either:
-  // - `OperationIsTrue && OperationIsFalse` or
-  // -`!OperationIsTrue && !OperationIsFalse`
-  // i.e. it is an operation where we cannot predict the outcome on zero.
-  return std::nullopt;
+  return !TrueValues.contains(APInt::getZero(C->getBitWidth()));
 }
 
 static bool isKnownNonZeroFromAssume(const Value *V, const SimplifyQuery &Q) {
