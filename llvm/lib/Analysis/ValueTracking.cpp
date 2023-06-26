@@ -562,19 +562,28 @@ bool llvm::isValidAssumeForContext(const Instruction *Inv,
 // example Pred=EQ, RHS=isKnownNonZero. cmpExcludesZero is called in loops
 // so the extra compile time may not be worth it, but possibly a second API
 // should be created for use outside of loops.
-static bool cmpExcludesZero(CmpInst::Predicate Pred, const Value *RHS) {
+//
+// Check whether or not we can say for certain that a comparison will return
+// false when one of the operands is zero. For example, x != 0 will always
+// return false for x = 0. x > y for unsigned comparisons will always return
+// false for 0 because 0 is the minimum value and 0 > 0 is false.
+static std::optional<bool> cmpExcludesZero(CmpInst::Predicate Pred, const Value *RHS) {
   // v u> y implies v != 0.
   if (Pred == ICmpInst::ICMP_UGT)
     return true;
+  else if (Pred == ICmpInst::ICMP_ULE)
+    return false;
 
   // Special-case v != 0 to also handle v != null.
-  if (Pred == ICmpInst::ICMP_NE)
-    return match(RHS, m_Zero());
+  if (Pred == ICmpInst::ICMP_NE && match(RHS, m_Zero()))
+    return true;
+  else if (Pred == ICmpInst::ICMP_EQ && match(RHS, m_Zero()))
+    return false;
 
   // All other predicates - rely on generic ConstantRange handling.
   const APInt *C;
   if (!match(RHS, m_APInt(C)))
-    return false;
+    return std::nullopt;
 
   ConstantRange TrueValues = ConstantRange::makeExactICmpRegion(Pred, *C);
   return !TrueValues.contains(APInt::getZero(C->getBitWidth()));
@@ -616,7 +625,7 @@ static bool isKnownNonZeroFromAssume(const Value *V, const SimplifyQuery &Q) {
     if (!match(I->getArgOperand(0), m_c_ICmp(Pred, m_V, m_Value(RHS))))
       return false;
 
-    if (cmpExcludesZero(Pred, RHS) && isValidAssumeForContext(I, Q.CxtI, Q.DT))
+    if (auto ExcludesZero = cmpExcludesZero(Pred, RHS); ExcludesZero.has_value() && *ExcludesZero && isValidAssumeForContext(I, Q.CxtI, Q.DT))
       return true;
   }
 
@@ -2316,10 +2325,8 @@ static bool isKnownNonNullFromDominatingCondition(const Value *V,
       continue;
 
     bool NonNullIfTrue;
-    if (cmpExcludesZero(Pred, RHS))
-      NonNullIfTrue = true;
-    else if (cmpExcludesZero(CmpInst::getInversePredicate(Pred), RHS))
-      NonNullIfTrue = false;
+    if (auto ExcludesZero = cmpExcludesZero(Pred, RHS); ExcludesZero.has_value())
+      NonNullIfTrue = *ExcludesZero;
     else
       continue;
 
@@ -2821,7 +2828,8 @@ bool isKnownNonZero(const Value *V, const APInt &DemandedElts, unsigned Depth,
       if (!IsTrueArm)
         Pred = ICmpInst::getInversePredicate(Pred);
 
-      return cmpExcludesZero(Pred, X);
+      auto ExcludesZero = cmpExcludesZero(Pred, X);
+      return ExcludesZero.has_value() && *ExcludesZero;
     };
 
     if (SelectArmIsNonZero(/* IsTrueArm */ true) &&
