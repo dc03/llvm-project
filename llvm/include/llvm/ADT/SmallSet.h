@@ -134,23 +134,15 @@ public:
 /// std::set to maintain reasonable lookup times.
 template <typename T, unsigned N, typename C = std::less<T>>
 class SmallSet {
-public:
-  using VectorTy = StackVector<T, N>;
-  using SetTy = std::set<T, C>;
-
-private:
   /// Use a StackVector to hold the elements here (even though it will never
   /// reach its 'large' stage) to avoid calling the default ctors of elements
   /// we will never use.
-  union {
-    VectorTy Vector;
-    SetTy Set;
-  };
-  bool IsCurrentlySmall;
+  StackVector<T, N> Vector;
+  std::set<T, C> Set;
 
-  using VIterator = typename VectorTy::const_iterator;
-  using SIterator = typename SetTy::const_iterator;
-  using mutable_iterator = typename VectorTy::iterator;
+  using VIterator = typename StackVector<T, N>::const_iterator;
+  using SIterator = typename std::set<T, C>::const_iterator;
+  using mutable_iterator = typename StackVector<T, N>::iterator;
 
   // In small mode SmallPtrSet uses linear search for the elements, so it is
   // not a good idea to choose this value too high. You may consider using a
@@ -163,61 +155,9 @@ public:
   using value_type = T;
   using const_iterator = SmallSetIterator<T, N, C>;
 
-  SmallSet(): Vector{}, IsCurrentlySmall{true} {}
+  SmallSet() = default;
 
-  SmallSet(const SmallSet &Other): IsCurrentlySmall{Other.IsCurrentlySmall} {
-    if (Other.isSmall())
-      new(&Vector) VectorTy{Other.Vector};
-    else
-      new(&Set) SetTy{Other.Set};
-  }
-
-  SmallSet &operator=(const SmallSet &Other) {
-    clear();
-    if (isSmall())
-      Vector.~VectorTy();
-    else
-      Set.~SetTy();
-
-    if (Other.isSmall())
-      new(&Vector) VectorTy{Other.Vector};
-    else
-      new(&Set) SetTy{Other.Set};
-
-    IsCurrentlySmall = Other.IsCurrentlySmall;
-    return *this;
-  }
-
-  SmallSet(SmallSet &&Other) noexcept : IsCurrentlySmall{Other.IsCurrentlySmall} {
-    if (Other.isSmall())
-      new(&Vector) VectorTy{std::move(Other.Vector)};
-    else
-      new(&Set) SetTy{std::move(Other.Set)};
-  }
-
-  SmallSet &operator=(SmallSet &&Other) noexcept {
-    clear();
-    if (isSmall())
-      Vector.~VectorTy();
-    else
-      Set.~SetTy();
-
-    if (Other.isSmall())
-      new(&Vector) VectorTy{std::move(Other.Vector)};
-    else
-      new(&Set) SetTy{std::move(Other.Set)};
-
-    return *this;
-  }
-
-  ~SmallSet() {
-    if (isSmall())
-      Vector.~VectorTy();
-    else
-      Set.~SetTy();
-  }
-
-  [[nodiscard]] bool empty() const { return isSmall() ? Vector.empty() : Set.empty(); }
+  [[nodiscard]] bool empty() const { return Vector.empty() && Set.empty(); }
 
   size_type size() const {
     return isSmall() ? Vector.size() : Set.size();
@@ -251,15 +191,11 @@ public:
       return std::make_pair(const_iterator(std::prev(Vector.end())), true);
     }
 
-    SetTy NewSet;
+    // Otherwise, grow from vector to set.
     while (!Vector.empty()) {
-      NewSet.insert(std::move(Vector.back()));
+      Set.insert(Vector.back());
       Vector.pop_back();
     }
-    Vector.~VectorTy();
-    new(&Set) SetTy{std::move(NewSet)};
-    IsCurrentlySmall = false;
-
     return std::make_pair(const_iterator(Set.insert(V).first), true);
   }
 
@@ -281,10 +217,8 @@ public:
   }
 
   void clear() {
-    if (isSmall())
-      Vector.clear();
-    else
-      Set.clear();
+    Vector.clear();
+    Set.clear();
   }
 
   const_iterator begin() const {
@@ -307,7 +241,7 @@ public:
   }
 
 private:
-  bool isSmall() const { return IsCurrentlySmall; }
+  bool isSmall() const { return Set.empty(); }
 
   VIterator vfind(const T &V) const {
     for (VIterator I = Vector.begin(), E = Vector.end(); I != E; ++I)
