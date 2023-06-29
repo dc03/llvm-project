@@ -32,25 +32,6 @@ class StackVector {
                             std::input_iterator_tag>,
     int>;
 
-  template <typename Ty>
-  constexpr static unsigned MyMax = std::numeric_limits<Ty>::max();
-
-  template <unsigned Num>
-  constexpr static auto getSmallestSizeType() {
-    if constexpr (Num <= MyMax<unsigned char>) {
-      return static_cast<unsigned char>(0);
-    } else if constexpr (Num <= MyMax<unsigned short>) {
-      return static_cast<unsigned short>(0);
-    } else if constexpr (Num <= MyMax<unsigned>) {
-      return static_cast<unsigned>(0);
-    }
-  }
-
-  template <unsigned Num>
-  struct SmallestSizeType {
-    using type = decltype(getSmallestSizeType<Num>());
-  };
-
 public:
   using value_type = T;
   using reference_type = T&;
@@ -65,7 +46,9 @@ public:
   using const_reverse_iterator = std::reverse_iterator<const_iterator>;
 
 private:
-  using NumElementsTy = typename SmallestSizeType<N>::type;
+  using NumElementsTy = unsigned char;
+
+  static_assert(N <= 255, "Cannot store more than 255 elements!");
 
   union MaybeUninitialized {
     T Object;
@@ -210,24 +193,22 @@ public:
   }
 
   constexpr iterator push_back(const T &Value) {
-    if (NumElements >= N)
-      return end();
-    
+    assert(NumElements < N && "Cannot push into a full vector!");
+
     new(&Elements[NumElements++].Object) T{Value};
     return &Elements[NumElements - 1].Object;
   }
 
   constexpr iterator push_back(T &&Value) {
-    if (NumElements >= N)
-      return end();
-    
+    assert(NumElements < N && "Cannot push into a full vector!");
+
     new(&Elements[NumElements++].Object) T{std::move(Value)};
     return &Elements[NumElements - 1].Object;
   }
 
   template <typename ...Ts>
   constexpr reference_type emplace_back(Ts &&...Args) {
-    assert(NumElements < N && "Cannot add to full vector!");
+    assert(NumElements < N && "Cannot emplace into full vector!");
 
     new(&Elements[NumElements++].Object) T{std::forward<Ts>(Args)...};
     return Elements[NumElements - 1].Object;
