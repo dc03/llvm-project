@@ -16,6 +16,7 @@
 
 #include "llvm-c/Types.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
@@ -94,25 +95,17 @@ public:
 class IRBuilderBase {
   /// Pairs of (metadata kind, MDNode *) that should be added to all newly
   /// created instructions, like !dbg metadata.
-  SmallVector<std::pair<unsigned, MDNode *>, 2> MetadataToCopy;
+  DenseMap<unsigned, MDNode *> MetadataToCopy;
 
   /// Add or update the an entry (Kind, MD) to MetadataToCopy, if \p MD is not
   /// null. If \p MD is null, remove the entry with \p Kind.
   void AddOrRemoveMetadataToCopy(unsigned Kind, MDNode *MD) {
     if (!MD) {
-      erase_if(MetadataToCopy, [Kind](const std::pair<unsigned, MDNode *> &KV) {
-        return KV.first == Kind;
-      });
+      MetadataToCopy.erase(Kind);
       return;
     }
 
-    for (auto &KV : MetadataToCopy)
-      if (KV.first == Kind) {
-        KV.second = MD;
-        return;
-      }
-
-    MetadataToCopy.emplace_back(Kind, MD);
+    MetadataToCopy[Kind] = MD;
   }
 
 protected:
@@ -231,8 +224,8 @@ public:
 
   /// Add all entries in MetadataToCopy to \p I.
   void AddMetadataToInst(Instruction *I) const {
-    for (const auto &KV : MetadataToCopy)
-      I->setMetadata(KV.first, KV.second);
+    for (const auto &[Key, Value] : MetadataToCopy)
+      I->setMetadata(Key, Value);
   }
 
   /// Get the return type of the current function that we're emitting
