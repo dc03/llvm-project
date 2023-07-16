@@ -2856,9 +2856,6 @@ SDValue DAGCombiner::visitADDLike(SDNode *N) {
                          N0.getOperand(1));
   }
 
-  if (SimplifyDemandedBits(SDValue(N, 0)))
-    return SDValue(N, 0);
-
   if (isOneOrOneSplat(N1)) {
     // fold (add (xor a, -1), 1) -> (sub 0, a)
     if (isBitwiseNot(N0))
@@ -2968,6 +2965,9 @@ SDValue DAGCombiner::visitADD(SDNode *N) {
     SDValue SV = DAG.getStepVector(DL, VT, NewStep);
     return DAG.getNode(ISD::ADD, DL, VT, N0.getOperand(0), SV);
   }
+
+  if (SimplifyDemandedBits(SDValue(N, 0)))
+    return SDValue(N, 0);
 
   return SDValue();
 }
