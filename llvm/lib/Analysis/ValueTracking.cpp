@@ -2459,6 +2459,7 @@ bool isKnownNonZero(const Value *V, const APInt &DemandedElts, unsigned Depth,
            "DemandedElt width should be 1 for scalars");
   }
 #endif
+  unsigned BitWidth = getBitWidth(V->getType()->getScalarType(), Q.DL);
 
   if (auto *C = dyn_cast<Constant>(V)) {
     if (C->isNullValue())
@@ -2504,6 +2505,11 @@ bool isKnownNonZero(const Value *V, const APInt &DemandedElts, unsigned Depth,
         const APInt ZeroValue(Ty->getBitWidth(), 0);
         if (rangeMetadataExcludesValue(Ranges, ZeroValue))
           return true;
+      }
+      if (isa<LoadInst>(I)) {
+        KnownBits Known(BitWidth);
+        computeKnownBitsFromRangeMetadata(*Ranges, Known);
+        return Known.One != 0;
       }
     }
   }
@@ -2552,7 +2558,6 @@ bool isKnownNonZero(const Value *V, const APInt &DemandedElts, unsigned Depth,
   if (!I)
     return false;
 
-  unsigned BitWidth = getBitWidth(V->getType()->getScalarType(), Q.DL);
   switch (I->getOpcode()) {
   case Instruction::GetElementPtr:
     if (I->getType()->isPointerTy())
@@ -2779,6 +2784,9 @@ bool isKnownNonZero(const Value *V, const APInt &DemandedElts, unsigned Depth,
     return isKnownNonZero(I->getOperand(0), Depth, Q) &&
            isGuaranteedNotToBePoison(I->getOperand(0), Q.AC, Q.CxtI, Q.DT,
                                      Depth);
+  case Instruction::Load:
+    // Handled above.
+    return false;
   case Instruction::Call:
     if (auto *II = dyn_cast<IntrinsicInst>(I)) {
       switch (II->getIntrinsicID()) {
