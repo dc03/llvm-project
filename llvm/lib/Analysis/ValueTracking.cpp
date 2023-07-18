@@ -2506,11 +2506,12 @@ bool isKnownNonZero(const Value *V, const APInt &DemandedElts, unsigned Depth,
         if (rangeMetadataExcludesValue(Ranges, ZeroValue))
           return true;
       }
-      if (isa<LoadInst>(I)) {
-        KnownBits Known(BitWidth);
-        computeKnownBitsFromRangeMetadata(*Ranges, Known);
+      KnownBits Known(BitWidth);
+      computeKnownBitsFromRangeMetadata(*Ranges, Known);
+      if (isa<LoadInst>(I))
         return Known.One != 0;
-      }
+      else if (isa<CallInst>(I) && Known.One != 0)
+        return true;
     }
   }
 
