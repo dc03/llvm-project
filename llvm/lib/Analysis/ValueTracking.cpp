@@ -2459,7 +2459,6 @@ bool isKnownNonZero(const Value *V, const APInt &DemandedElts, unsigned Depth,
            "DemandedElt width should be 1 for scalars");
   }
 #endif
-  unsigned BitWidth = getBitWidth(V->getType()->getScalarType(), Q.DL);
 
   if (auto *C = dyn_cast<Constant>(V)) {
     if (C->isNullValue())
@@ -2506,12 +2505,6 @@ bool isKnownNonZero(const Value *V, const APInt &DemandedElts, unsigned Depth,
         if (rangeMetadataExcludesValue(Ranges, ZeroValue))
           return true;
       }
-      KnownBits Known(BitWidth);
-      computeKnownBitsFromRangeMetadata(*Ranges, Known);
-      if (isa<LoadInst>(I))
-        return Known.One != 0;
-      else if (isa<CallInst>(I) && Known.One != 0)
-        return true;
     }
   }
 
@@ -2559,6 +2552,7 @@ bool isKnownNonZero(const Value *V, const APInt &DemandedElts, unsigned Depth,
   if (!I)
     return false;
 
+  unsigned BitWidth = getBitWidth(V->getType()->getScalarType(), Q.DL);
   switch (I->getOpcode()) {
   case Instruction::GetElementPtr:
     if (I->getType()->isPointerTy())
@@ -2789,6 +2783,12 @@ bool isKnownNonZero(const Value *V, const APInt &DemandedElts, unsigned Depth,
     // Handled above.
     return false;
   case Instruction::Call:
+    if (const Value *RV = cast<CallBase>(I)->getReturnedArgOperand()) {
+      KnownBits Known2(BitWidth);
+      computeKnownBits(RV, Known2, Depth, Q);
+      if (Known2.One != 0)
+        return true;
+    }
     if (auto *II = dyn_cast<IntrinsicInst>(I)) {
       switch (II->getIntrinsicID()) {
       case Intrinsic::sshl_sat:
@@ -2849,6 +2849,8 @@ bool isKnownNonZero(const Value *V, const APInt &DemandedElts, unsigned Depth,
       default:
         break;
       }
+    } else {
+      return false;
     }
     break;
   }
