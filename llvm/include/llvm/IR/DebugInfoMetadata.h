@@ -3750,6 +3750,7 @@ public:
   }
 
   void handleChangedOperand(void *Ref, Metadata *New);
+  bool handleChangedOperandWithoutUniquing(void *, Metadata *);
 };
 
 /// Identifies a unique instance of a variable.

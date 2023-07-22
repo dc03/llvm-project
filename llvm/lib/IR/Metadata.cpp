@@ -323,6 +323,59 @@ void ReplaceableMetadataImpl::replaceAllUsesWith(Metadata *MD) {
   assert(UseMap.empty() && "Expected all uses to be replaced");
 }
 
+void ReplaceableMetadataImpl::replaceAllUsesWithoutUniquing(
+    Metadata *MD,
+    SmallDenseMap<Metadata *, SmallVector<std::pair<void *, Metadata *>>>
+        &ToBeUniqued) {
+  if (UseMap.empty())
+    return;
+
+  // Copy out uses since UseMap will get touched below.
+  using UseTy = std::pair<void *, std::pair<OwnerTy, uint64_t>>;
+  SmallVector<UseTy, 8> Uses(UseMap.begin(), UseMap.end());
+  llvm::sort(Uses, [](const UseTy &L, const UseTy &R) {
+    return L.second.second < R.second.second;
+  });
+  for (const auto &Pair : Uses) {
+    // Check that this Ref hasn't disappeared after RAUW (when updating a
+    // previous Ref).
+    if (!UseMap.count(Pair.first))
+      continue;
+
+    OwnerTy Owner = Pair.second.first;
+    if (!Owner) {
+      // Update unowned tracking references directly.
+      Metadata *&Ref = *static_cast<Metadata **>(Pair.first);
+      Ref = MD;
+      if (MD)
+        MetadataTracking::track(Ref);
+      UseMap.erase(Pair.first);
+      continue;
+    }
+
+    // Check for MetadataAsValue.
+    if (isa<MetadataAsValue *>(Owner)) {
+      cast<MetadataAsValue *>(Owner)->handleChangedMetadata(MD);
+      continue;
+    }
+
+    // There's a Metadata owner -- dispatch.
+    Metadata *OwnerMD = cast<Metadata *>(Owner);
+    switch (OwnerMD->getMetadataID()) {
+#define HANDLE_METADATA_LEAF(CLASS)                                            \
+  case Metadata::CLASS##Kind:                                                  \
+    if (cast<CLASS>(OwnerMD)->handleChangedOperandWithoutUniquing(Pair.first,  \
+                                                                  MD))         \
+      ToBeUniqued[OwnerMD].emplace_back(Pair.first, MD);                       \
+    continue;
+#include "llvm/IR/Metadata.def"
+    default:
+      llvm_unreachable("Invalid metadata subclass");
+    }
+  }
+  assert(UseMap.empty() && "Expected all uses to be replaced");
+}
+
 void ReplaceableMetadataImpl::resolveAllUses(bool ResolveUsers) {
   if (UseMap.empty())
     return;
@@ -854,6 +907,33 @@ void MDNode::handleChangedOperand(void *Ref, Metadata *New) {
 
   // Store in non-uniqued form if RAUW isn't possible.
   storeDistinctInContext();
+}
+
+bool MDNode::handleChangedOperandWithoutUniquing(void *Ref, Metadata *New) {
+  unsigned Op = static_cast<MDOperand *>(Ref) - op_begin();
+  assert(Op < getNumOperands() && "Expected valid operand");
+
+  if (!isUniqued()) {
+    // This node is not uniqued.  Just set the operand and be done with it.
+    setOperand(Op, New);
+    return false;
+  }
+
+  // This node is uniqued.
+  eraseFromStore();
+
+  Metadata *Old = getOperand(Op);
+  setOperand(Op, New);
+
+  // Drop uniquing for self-reference cycles and deleted constants.
+  if (New == this || (!New && Old && isa<ConstantAsMetadata>(Old))) {
+    if (!isResolved())
+      resolve();
+    storeDistinctInContext();
+    return false;
+  }
+
+  return true;
 }
 
 void MDNode::deleteAsSubclass() {

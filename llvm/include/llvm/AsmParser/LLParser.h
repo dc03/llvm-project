@@ -122,6 +122,9 @@ namespace llvm {
     std::map<unsigned, TrackingMDNodeRef> NumberedMetadata;
     std::map<unsigned, std::pair<TempMDTuple, LocTy>> ForwardRefMDNodes;
 
+    DenseMap<unsigned, std::pair<MDTuple *, MDNode *>> ToBeRAUWed;
+    static void ClearToBeRAUWed(LLParser *Parser);
+
     // Global Value reference information.
     std::map<std::string, std::pair<GlobalValue*, LocTy> > ForwardRefVals;
     std::map<unsigned, std::pair<GlobalValue*, LocTy> > ForwardRefValIDs;

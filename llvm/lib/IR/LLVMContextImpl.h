@@ -586,7 +586,8 @@ template <> struct MDNodeKeyImpl<DIDerivedType> {
     // performance reason. The subset has to be significant enough to avoid
     // collision "most of the time". There is no correctness issue in case of
     // collision because of the full check above.
-    return hash_combine(Tag, Name, File, Line, Scope, BaseType, Flags);
+    return hash_combine(Tag, Name, OffsetInBits, File, Line, Scope, BaseType,
+                        Flags);
   }
 };
 

@@ -365,6 +365,59 @@ bool LLParser::parseTargetDefinitions(DataLayoutCallbackTy DataLayoutCallback) {
   return false;
 }
 
+void LLParser::ClearToBeRAUWed(LLParser *Parser) {
+  SmallDenseMap<Metadata *, SmallVector<std::pair<void *, Metadata *>>>
+      ToBeUniqued;
+  for (auto &[MetadataID, Values] : Parser->ToBeRAUWed) {
+    auto *ToReplace = Values.first;
+    auto *Init = Values.second;
+    // DIAssignID has its own special forward-reference "replacement" for
+    // attachments (the temporary attachments are never actually attached).
+    if (isa<DIAssignID>(Init)) {
+      for (auto *Inst : Parser->TempDIAssignIDAttachments[ToReplace]) {
+        assert(!Inst->getMetadata(LLVMContext::MD_DIAssignID) &&
+               "Inst unexpectedly already has DIAssignID attachment");
+        Inst->setMetadata(LLVMContext::MD_DIAssignID, Init);
+      }
+    }
+
+    ToReplace->replaceAllUsesWithoutUniquing(Init, ToBeUniqued);
+    Parser->ForwardRefMDNodes.erase(Parser->ForwardRefMDNodes.find(MetadataID));
+
+    assert(Parser->NumberedMetadata[MetadataID] == Init &&
+           "Tracking VH didn't work");
+  }
+
+  for (auto &[MD, OldNewPair] : ToBeUniqued) {
+    if (auto *DIA = dyn_cast<DIArgList>(MD)) {
+      if (DIA->uniquify() != DIA)
+        DIA->storeDistinctInContext();
+    } else if (auto *MDN = dyn_cast<MDNode>(MD)) {
+      auto *Uniqued = MDN->uniquify();
+      if (Uniqued != MDN) {
+        if (MDN->isResolved()) {
+          MDN->storeDistinctInContext();
+          return;
+        }
+        // Still unresolved, so RAUW.
+        //
+        // First, clear out all operands to prevent any recursion (similar to
+        // dropAllReferences(), but we still need the use-list).
+        for (unsigned O = 0, E = MDN->getNumOperands(); O != E; ++O)
+          MDN->setOperand(O, nullptr);
+        if (MDN->getContextAndReplaceableUses()->hasReplaceableUses())
+          MDN->getContextAndReplaceableUses()->getReplaceableUses()->replaceAllUsesWith(Uniqued);
+        MDN->deleteAsSubclass();
+        return;
+      }
+      for (auto &[Old, New] : OldNewPair) {
+        if (!MDN->isResolved())
+          MDN->resolveAfterOperandChange((Metadata *)Old, New);
+      }
+    }
+  }
+}
+
 bool LLParser::parseTopLevelEntities() {
   // If there is no Module, then parse just the summary index entries.
   if (!M) {
@@ -386,6 +439,8 @@ bool LLParser::parseTopLevelEntities() {
       }
     }
   }
+  std::unique_ptr<LLParser, void (*)(LLParser *)> RAUWHandler(
+      this, LLParser::ClearToBeRAUWed);
   while (true) {
     switch (Lex.getKind()) {
     default:
@@ -845,21 +900,7 @@ bool LLParser::parseStandaloneMetadata() {
   // See if this was forward referenced, if so, handle it.
   auto FI = ForwardRefMDNodes.find(MetadataID);
   if (FI != ForwardRefMDNodes.end()) {
-    auto *ToReplace = FI->second.first.get();
-    // DIAssignID has its own special forward-reference "replacement" for
-    // attachments (the temporary attachments are never actually attached).
-    if (isa<DIAssignID>(Init)) {
-      for (auto *Inst : TempDIAssignIDAttachments[ToReplace]) {
-        assert(!Inst->getMetadata(LLVMContext::MD_DIAssignID) &&
-               "Inst unexpectedly already has DIAssignID attachment");
-        Inst->setMetadata(LLVMContext::MD_DIAssignID, Init);
-      }
-    }
-
-    ToReplace->replaceAllUsesWith(Init);
-    ForwardRefMDNodes.erase(FI);
-
-    assert(NumberedMetadata[MetadataID] == Init && "Tracking VH didn't work");
+    ToBeRAUWed[MetadataID] = std::make_pair(FI->second.first.get(), Init);
   } else {
     if (NumberedMetadata.count(MetadataID))
       return tokError("Metadata id is already used");

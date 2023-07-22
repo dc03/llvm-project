@@ -97,6 +97,10 @@ protected:
     llvm_unreachable("Unimplemented in Metadata subclass");
   }
 
+  bool handleChangedOperandWithoutUniquing(void *, Metadata *) {
+    llvm_unreachable("Unimplemented in Metadata subclass");
+  }
+
 public:
   unsigned getMetadataID() const { return SubclassID; }
 
@@ -301,7 +305,11 @@ public:
   ///
   /// Replace all uses of this with \c MD, which is allowed to be null.
   void replaceAllUsesWith(Metadata *MD);
-   /// Replace all uses of the constant with Undef in debug info metadata
+  void replaceAllUsesWithoutUniquing(
+      Metadata *MD,
+      SmallDenseMap<Metadata *, SmallVector<std::pair<void *, Metadata *>>>
+          &ToBeUniqued);
+  /// Replace all uses of the constant with Undef in debug info metadata
   static void SalvageDebugInfo(const Constant &C); 
   /// Returns the list of all DIArgList users of this.
   SmallVector<Metadata *> getAllArgListUsers();
@@ -400,6 +408,12 @@ protected:
   /// merge the two metadata nodes.
   void replaceAllUsesWith(Metadata *MD) {
     ReplaceableMetadataImpl::replaceAllUsesWith(MD);
+  }
+  void replaceAllUsesWithoutUniquing(
+      Metadata *MD,
+      SmallDenseMap<Metadata *, SmallVector<std::pair<void *, Metadata *>>>
+          &ToBeUniqued) {
+    ReplaceableMetadataImpl::replaceAllUsesWithoutUniquing(MD, ToBeUniqued);
   }
 
 public:
@@ -1141,6 +1155,15 @@ public:
     if (Context.hasReplaceableUses())
       Context.getReplaceableUses()->replaceAllUsesWith(MD);
   }
+  void replaceAllUsesWithoutUniquing(
+      Metadata *MD,
+      SmallDenseMap<Metadata *, SmallVector<std::pair<void *, Metadata *>>>
+          &ToBeUniqued) {
+    assert(isTemporary() && "Expected temporary node");
+    if (Context.hasReplaceableUses())
+      Context.getReplaceableUses()->replaceAllUsesWithoutUniquing(MD,
+                                                                  ToBeUniqued);
+  }
 
   /// Resolve cycles.
   ///
@@ -1216,15 +1239,9 @@ private:
   MDNode *replaceWithDistinctImpl();
 
 protected:
-  /// Set an operand.
-  ///
-  /// Sets the operand directly, without worrying about uniquing.
-  void setOperand(unsigned I, Metadata *New);
-
   unsigned getNumUnresolved() const { return getHeader().NumUnresolved; }
 
   void setNumUnresolved(unsigned N) { getHeader().NumUnresolved = N; }
-  void storeDistinctInContext();
   template <class T, class StoreT>
   static T *storeImpl(T *N, StorageType Storage, StoreT &Store);
   template <class T> static T *storeImpl(T *N, StorageType Storage);
@@ -1242,11 +1259,11 @@ protected:
 
 private:
   void handleChangedOperand(void *Ref, Metadata *New);
+  bool handleChangedOperandWithoutUniquing(void *Ref, Metadata *New);
 
   /// Drop RAUW support, if any.
   void dropReplaceableUses();
 
-  void resolveAfterOperandChange(Metadata *Old, Metadata *New);
   void decrementUnresolvedOperandCount();
   void countUnresolvedOperands();
 
@@ -1263,8 +1280,6 @@ private:
   /// \pre \a isTemporary().
   void makeDistinct();
 
-  void deleteAsSubclass();
-  MDNode *uniquify();
   void eraseFromStore();
 
   template <class NodeTy> struct HasCachedHash;
@@ -1287,6 +1302,18 @@ private:
                                              const Instruction *BInstr);
 
 public:
+  void deleteAsSubclass();
+  void resolveAfterOperandChange(Metadata *Old, Metadata *New);
+  void storeDistinctInContext();
+  MDNode *uniquify();
+  ContextAndReplaceableUses *getContextAndReplaceableUses() {
+    return &Context;
+  }
+  /// Set an operand.
+  ///
+  /// Sets the operand directly, without worrying about uniquing.
+  void setOperand(unsigned I, Metadata *New);
+
   using op_iterator = const MDOperand *;
   using op_range = iterator_range<op_iterator>;
 

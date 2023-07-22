@@ -2109,6 +2109,31 @@ void DIArgList::handleChangedOperand(void *Ref, Metadata *New) {
   }
   track();
 }
+
+bool DIArgList::handleChangedOperandWithoutUniquing(void *Ref, Metadata *New) {
+  ValueAsMetadata **OldVMPtr = static_cast<ValueAsMetadata **>(Ref);
+  assert((!New || isa<ValueAsMetadata>(New)) &&
+         "DIArgList must be passed a ValueAsMetadata");
+  untrack();
+  bool Uniq = isUniqued();
+  if (Uniq) {
+    // We need to update the uniqueness once the Args are updated since they
+    // form the key to the DIArgLists store.
+    eraseFromStore();
+  }
+  ValueAsMetadata *NewVM = cast_or_null<ValueAsMetadata>(New);
+  for (ValueAsMetadata *&VM : Args) {
+    if (&VM == OldVMPtr) {
+      if (NewVM)
+        VM = NewVM;
+      else
+        VM = ValueAsMetadata::get(PoisonValue::get(VM->getValue()->getType()));
+    }
+  }
+  track();
+  return Uniq;
+}
+
 void DIArgList::track() {
   for (ValueAsMetadata *&VAM : Args)
     if (VAM)
