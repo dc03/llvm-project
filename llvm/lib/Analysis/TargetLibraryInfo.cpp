@@ -15,7 +15,7 @@
 #include "llvm/InitializePasses.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/TargetParser/Triple.h"
-#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/StringMap.h"
 using namespace llvm;
 
 static cl::opt<TargetLibraryInfoImpl::VectorLibrary> ClVectorLibrary(
@@ -946,12 +946,11 @@ bool TargetLibraryInfoImpl::getLibFunc(StringRef funcName, LibFunc &F) const {
     return false;
 
   static bool IsInitialized = false;
-  static DenseMap<StringRef, unsigned> Indices;
+  static StringMap<unsigned> Indices;
   if (!IsInitialized) {
     unsigned Idx = 0;
-    Indices.reserve(LibFunc::NumLibFuncs);
-    for (const auto &func : StandardNames)
-      Indices[func] = Idx++;
+    for (const auto &SName : StandardNames)
+      Indices.try_emplace(SName, Idx++);
     IsInitialized = true;
   }
 
