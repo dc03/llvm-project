@@ -2700,6 +2700,11 @@ static bool isKnownNonZeroFromOperator(const Operator *I,
         return isKnownNonZero(RP, Depth, Q);
     }
 
+    if (const Value *RV = cast<CallBase>(I)->getReturnedArgOperand()) {
+      if (isKnownNonZero(RV, Depth, Q))
+        return true;
+    }
+
     if (auto *II = dyn_cast<IntrinsicInst>(I)) {
       switch (II->getIntrinsicID()) {
       case Intrinsic::sshl_sat:
@@ -2755,13 +2760,17 @@ static bool isKnownNonZeroFromOperator(const Operator *I,
         if (II->getArgOperand(0) == II->getArgOperand(1))
           return isKnownNonZero(II->getArgOperand(0), DemandedElts, Depth, Q);
         break;
+      case Intrinsic::x86_sse42_crc32_64_64:
+      case Intrinsic::riscv_vsetvli:
+      case Intrinsic::riscv_vsetvlimax:
       case Intrinsic::vscale:
         return true;
       default:
         break;
       }
+    } else {
+      return false;
     }
-    break;
   }
 
   KnownBits Known(BitWidth);
