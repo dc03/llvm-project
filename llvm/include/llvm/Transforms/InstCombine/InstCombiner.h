@@ -512,9 +512,26 @@ public:
     return llvm::computeOverflowForUnsignedAdd(LHS, RHS, DL, &AC, CxtI, &DT);
   }
 
+  OverflowResult computeOverflowForUnsignedAdd(const Value *LHS,
+                                               const Value *RHS,
+                                               const KnownBits &LHSKnown,
+                                               const KnownBits &RHSKnown,
+                                               const Instruction *CxtI) const {
+    return llvm::computeOverflowForUnsignedAdd(LHS, RHS, LHSKnown, RHSKnown, DL,
+                                               &AC, CxtI, &DT);
+  }
+
   OverflowResult computeOverflowForSignedAdd(const Value *LHS, const Value *RHS,
                                              const Instruction *CxtI) const {
     return llvm::computeOverflowForSignedAdd(LHS, RHS, DL, &AC, CxtI, &DT);
+  }
+
+  OverflowResult computeOverflowForSignedAdd(const Value *LHS, const Value *RHS,
+                                             const KnownBits &LHSKnown,
+                                             const KnownBits &RHSKnown,
+                                             const Instruction *CxtI) const {
+    return llvm::computeOverflowForSignedAdd(LHS, RHS, LHSKnown, RHSKnown, DL,
+                                             &AC, CxtI, &DT);
   }
 
   OverflowResult computeOverflowForUnsignedSub(const Value *LHS,

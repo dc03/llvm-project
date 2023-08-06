@@ -263,9 +263,25 @@ private:
            OverflowResult::NeverOverflows;
   }
 
+  bool willNotOverflowSignedAdd(const Value *LHS, const Value *RHS,
+                                const KnownBits &LHSKnown,
+                                const KnownBits &RHSKnown,
+                                const Instruction &CxtI) const {
+    return computeOverflowForSignedAdd(LHS, RHS, LHSKnown, RHSKnown, &CxtI) ==
+           OverflowResult::NeverOverflows;
+  }
+
   bool willNotOverflowUnsignedAdd(const Value *LHS, const Value *RHS,
                                   const Instruction &CxtI) const {
     return computeOverflowForUnsignedAdd(LHS, RHS, &CxtI) ==
+           OverflowResult::NeverOverflows;
+  }
+
+  bool willNotOverflowUnsignedAdd(const Value *LHS, const Value *RHS,
+                                  const KnownBits &LHSKnown,
+                                  const KnownBits &RHSKnown,
+                                  const Instruction &CxtI) const {
+    return computeOverflowForUnsignedAdd(LHS, RHS, LHSKnown, RHSKnown, &CxtI) ==
            OverflowResult::NeverOverflows;
   }
 

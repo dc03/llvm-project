@@ -1485,7 +1485,9 @@ Instruction *InstCombinerImpl::visitAdd(BinaryOperator &I) {
     return replaceInstUsesWith(I, Constant::getNullValue(I.getType()));
 
   // A+B --> A|B iff A and B have no bits set in common.
-  if (haveNoCommonBitsSet(LHS, RHS, DL, &AC, &I, &DT))
+  KnownBits LHSKnown, RHSKnown;
+  if (haveNoCommonBitsSet(LHS, RHS, LHSKnown, RHSKnown, DL, &AC, &I, &DT,
+                          /* ComputeKnownBitsBeforeHand */ true))
     return BinaryOperator::CreateOr(LHS, RHS);
 
   if (Instruction *Ext = narrowMathIfNoOverflow(I))
@@ -1580,11 +1582,13 @@ Instruction *InstCombinerImpl::visitAdd(BinaryOperator &I) {
   // willNotOverflowUnsignedAdd to reduce the number of invocations of
   // computeKnownBits.
   bool Changed = false;
-  if (!I.hasNoSignedWrap() && willNotOverflowSignedAdd(LHS, RHS, I)) {
+  if (!I.hasNoSignedWrap() &&
+      willNotOverflowSignedAdd(LHS, RHS, LHSKnown, RHSKnown, I)) {
     Changed = true;
     I.setHasNoSignedWrap(true);
   }
-  if (!I.hasNoUnsignedWrap() && willNotOverflowUnsignedAdd(LHS, RHS, I)) {
+  if (!I.hasNoUnsignedWrap() &&
+      willNotOverflowUnsignedAdd(LHS, RHS, LHSKnown, RHSKnown, I)) {
     Changed = true;
     I.setHasNoUnsignedWrap(true);
   }

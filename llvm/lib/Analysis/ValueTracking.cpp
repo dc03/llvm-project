@@ -206,10 +206,30 @@ bool llvm::haveNoCommonBitsSet(const Value *LHS, const Value *RHS,
                                const DataLayout &DL, AssumptionCache *AC,
                                const Instruction *CxtI, const DominatorTree *DT,
                                bool UseInstrInfo) {
+  KnownBits LHSKnown, RHSKnown;
+  return haveNoCommonBitsSet(LHS, RHS, LHSKnown, RHSKnown, DL, AC, CxtI, DT,
+                             UseInstrInfo);
+}
+
+bool llvm::haveNoCommonBitsSet(const Value *LHS, const Value *RHS,
+                               KnownBits &LHSKnown, KnownBits &RHSKnown,
+                               const DataLayout &DL, AssumptionCache *AC,
+                               const Instruction *CxtI, const DominatorTree *DT,
+                               bool UseInstrInfo,
+                               bool ComputeKnownBitsBeforeHand) {
   assert(LHS->getType() == RHS->getType() &&
          "LHS and RHS should have the same type");
   assert(LHS->getType()->isIntOrIntVectorTy() &&
          "LHS and RHS should be integers");
+
+  IntegerType *IT = cast<IntegerType>(LHS->getType()->getScalarType());
+  if (ComputeKnownBitsBeforeHand) {
+    LHSKnown = KnownBits(IT->getBitWidth());
+    RHSKnown = KnownBits(IT->getBitWidth());
+    computeKnownBits(LHS, LHSKnown, DL, 0, AC, CxtI, DT, UseInstrInfo);
+    computeKnownBits(RHS, RHSKnown, DL, 0, AC, CxtI, DT, UseInstrInfo);
+  }
+
   // Look for an inverted mask: (X & ~M) op (Y & M).
   {
     Value *M;
@@ -253,11 +273,12 @@ bool llvm::haveNoCommonBitsSet(const Value *LHS, const Value *RHS,
         match(LHS, m_Not(m_c_Or(m_Specific(A), m_Specific(B)))))
       return true;
   }
-  IntegerType *IT = cast<IntegerType>(LHS->getType()->getScalarType());
-  KnownBits LHSKnown(IT->getBitWidth());
-  KnownBits RHSKnown(IT->getBitWidth());
-  computeKnownBits(LHS, LHSKnown, DL, 0, AC, CxtI, DT, UseInstrInfo);
-  computeKnownBits(RHS, RHSKnown, DL, 0, AC, CxtI, DT, UseInstrInfo);
+  if (!ComputeKnownBitsBeforeHand) {
+    LHSKnown = KnownBits(IT->getBitWidth());
+    RHSKnown = KnownBits(IT->getBitWidth());
+    computeKnownBits(LHS, LHSKnown, DL, 0, AC, CxtI, DT, UseInstrInfo);
+    computeKnownBits(RHS, RHSKnown, DL, 0, AC, CxtI, DT, UseInstrInfo);
+  }
   return KnownBits::haveNoCommonBitsSet(LHSKnown, RHSKnown);
 }
 
@@ -2772,6 +2793,16 @@ static bool isKnownNonZeroFromOperator(const Operator *I,
       return false;
     }
   }
+
+  //   switch (I->getOpcode()) {
+  //   default:
+  //     break;
+  // #define HANDLE_INST(num, opcode, Class) \
+//   case num: \
+//     dbgs() << #opcode << " " << #Class << '\n'; \ break;
+  // #include "llvm/IR/Instruction.def"
+  // #undef HANDLE_INST
+  //   }
 
   KnownBits Known(BitWidth);
   computeKnownBits(I, DemandedElts, Known, Depth, Q);
@@ -6202,15 +6233,24 @@ static OverflowResult mapOverflowResult(ConstantRange::OverflowResult OR) {
 
 /// Combine constant ranges from computeConstantRange() and computeKnownBits().
 static ConstantRange computeConstantRangeIncludingKnownBits(
-    const Value *V, bool ForSigned, const DataLayout &DL, unsigned Depth,
-    AssumptionCache *AC, const Instruction *CxtI, const DominatorTree *DT,
+    const Value *V, const KnownBits &Known, bool ForSigned,
+    const DataLayout &DL, unsigned Depth, AssumptionCache *AC,
+    const Instruction *CxtI, const DominatorTree *DT,
     bool UseInstrInfo = true) {
-  KnownBits Known = computeKnownBits(V, DL, Depth, AC, CxtI, DT, UseInstrInfo);
   ConstantRange CR1 = ConstantRange::fromKnownBits(Known, ForSigned);
   ConstantRange CR2 = computeConstantRange(V, ForSigned, UseInstrInfo);
   ConstantRange::PreferredRangeType RangeType =
       ForSigned ? ConstantRange::Signed : ConstantRange::Unsigned;
   return CR1.intersectWith(CR2, RangeType);
+}
+
+static ConstantRange computeConstantRangeIncludingKnownBits(
+    const Value *V, bool ForSigned, const DataLayout &DL, unsigned Depth,
+    AssumptionCache *AC, const Instruction *CxtI, const DominatorTree *DT,
+    bool UseInstrInfo = true) {
+  KnownBits Known = computeKnownBits(V, DL, Depth, AC, CxtI, DT, UseInstrInfo);
+  return computeConstantRangeIncludingKnownBits(V, Known, ForSigned, DL, Depth,
+                                                AC, CxtI, DT, UseInstrInfo);
 }
 
 OverflowResult llvm::computeOverflowForUnsignedMul(
@@ -6273,20 +6313,31 @@ OverflowResult llvm::computeOverflowForUnsignedAdd(
     const Value *LHS, const Value *RHS, const DataLayout &DL,
     AssumptionCache *AC, const Instruction *CxtI, const DominatorTree *DT,
     bool UseInstrInfo) {
+  KnownBits LHSKnown =
+      computeKnownBits(LHS, DL, /*Depth=*/0, AC, CxtI, DT, UseInstrInfo);
+  KnownBits RHSKnown =
+      computeKnownBits(RHS, DL, /*Depth=*/0, AC, CxtI, DT, UseInstrInfo);
+  return computeOverflowForUnsignedAdd(LHS, RHS, LHSKnown, RHSKnown, DL, AC,
+                                       CxtI, DT, UseInstrInfo);
+}
+
+OverflowResult llvm::computeOverflowForUnsignedAdd(
+    const Value *LHS, const Value *RHS, const KnownBits &LHSKnown,
+    const KnownBits &RHSKnown, const DataLayout &DL, AssumptionCache *AC,
+    const Instruction *CxtI, const DominatorTree *DT, bool UseInstrInfo) {
   ConstantRange LHSRange = computeConstantRangeIncludingKnownBits(
-      LHS, /*ForSigned=*/false, DL, /*Depth=*/0, AC, CxtI, DT, UseInstrInfo);
+      LHS, LHSKnown, /*ForSigned=*/false, DL, /*Depth=*/0, AC, CxtI, DT,
+      UseInstrInfo);
   ConstantRange RHSRange = computeConstantRangeIncludingKnownBits(
-      RHS, /*ForSigned=*/false, DL, /*Depth=*/0, AC, CxtI, DT, UseInstrInfo);
+      RHS, RHSKnown, /*ForSigned=*/false, DL, /*Depth=*/0, AC, CxtI, DT,
+      UseInstrInfo);
   return mapOverflowResult(LHSRange.unsignedAddMayOverflow(RHSRange));
 }
 
-static OverflowResult computeOverflowForSignedAdd(const Value *LHS,
-                                                  const Value *RHS,
-                                                  const AddOperator *Add,
-                                                  const DataLayout &DL,
-                                                  AssumptionCache *AC,
-                                                  const Instruction *CxtI,
-                                                  const DominatorTree *DT) {
+static OverflowResult computeOverflowForSignedAdd(
+    const Value *LHS, const Value *RHS, const KnownBits &LHSKnown,
+    const KnownBits &RHSKnown, const AddOperator *Add, const DataLayout &DL,
+    AssumptionCache *AC, const Instruction *CxtI, const DominatorTree *DT) {
   if (Add && Add->hasNoSignedWrap()) {
     return OverflowResult::NeverOverflows;
   }
@@ -6310,9 +6361,9 @@ static OverflowResult computeOverflowForSignedAdd(const Value *LHS,
     return OverflowResult::NeverOverflows;
 
   ConstantRange LHSRange = computeConstantRangeIncludingKnownBits(
-      LHS, /*ForSigned=*/true, DL, /*Depth=*/0, AC, CxtI, DT);
+      LHS, LHSKnown, /*ForSigned=*/true, DL, /*Depth=*/0, AC, CxtI, DT);
   ConstantRange RHSRange = computeConstantRangeIncludingKnownBits(
-      RHS, /*ForSigned=*/true, DL, /*Depth=*/0, AC, CxtI, DT);
+      RHS, RHSKnown, /*ForSigned=*/true, DL, /*Depth=*/0, AC, CxtI, DT);
   OverflowResult OR =
       mapOverflowResult(LHSRange.signedAddMayOverflow(RHSRange));
   if (OR != OverflowResult::MayOverflow)
@@ -6342,6 +6393,17 @@ static OverflowResult computeOverflowForSignedAdd(const Value *LHS,
   }
 
   return OverflowResult::MayOverflow;
+}
+
+static OverflowResult
+computeOverflowForSignedAdd(const Value *LHS, const Value *RHS,
+                            const AddOperator *Add, const DataLayout &DL,
+                            AssumptionCache *AC, const Instruction *CxtI,
+                            const DominatorTree *DT) {
+  KnownBits LHSKnown = computeKnownBits(LHS, DL, 0, AC, CxtI, DT);
+  KnownBits RHSKnown = computeKnownBits(RHS, DL, 0, AC, CxtI, DT);
+  return computeOverflowForSignedAdd(LHS, RHS, LHSKnown, RHSKnown, Add, DL, AC,
+                                     CxtI, DT);
 }
 
 OverflowResult llvm::computeOverflowForUnsignedSub(const Value *LHS,
@@ -6915,6 +6977,14 @@ OverflowResult llvm::computeOverflowForSignedAdd(const Value *LHS,
                                                  const Instruction *CxtI,
                                                  const DominatorTree *DT) {
   return ::computeOverflowForSignedAdd(LHS, RHS, nullptr, DL, AC, CxtI, DT);
+}
+
+OverflowResult llvm::computeOverflowForSignedAdd(
+    const Value *LHS, const Value *RHS, const KnownBits &LHSKnown,
+    const KnownBits &RHSKnown, const DataLayout &DL, AssumptionCache *AC,
+    const Instruction *CxtI, const DominatorTree *DT) {
+  return ::computeOverflowForSignedAdd(LHS, RHS, LHSKnown, RHSKnown, nullptr,
+                                       DL, AC, CxtI, DT);
 }
 
 bool llvm::isGuaranteedToTransferExecutionToSuccessor(const Instruction *I) {

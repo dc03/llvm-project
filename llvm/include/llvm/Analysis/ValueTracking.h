@@ -111,7 +111,13 @@ bool haveNoCommonBitsSet(const Value *LHS, const Value *RHS,
                          const Instruction *CxtI = nullptr,
                          const DominatorTree *DT = nullptr,
                          bool UseInstrInfo = true);
-
+bool haveNoCommonBitsSet(const Value *LHS, const Value *RHS,
+                         KnownBits &LHSKnown, KnownBits &RHSKnown,
+                         const DataLayout &DL, AssumptionCache *AC = nullptr,
+                         const Instruction *CxtI = nullptr,
+                         const DominatorTree *DT = nullptr,
+                         bool UseInstrInfo = true,
+                         bool ComputeKnownBitsBeforeHand = false);
 /// Return true if the given value is known to have exactly one bit set when
 /// defined. For vectors return true if every element is known to be a power
 /// of two when defined. Supports values with integer or pointer type and
@@ -844,7 +850,18 @@ OverflowResult computeOverflowForUnsignedAdd(const Value *LHS, const Value *RHS,
                                              const Instruction *CxtI,
                                              const DominatorTree *DT,
                                              bool UseInstrInfo = true);
+OverflowResult computeOverflowForUnsignedAdd(
+    const Value *LHS, const Value *RHS, const KnownBits &LHSKnown,
+    const KnownBits &RHSKnown, const DataLayout &DL, AssumptionCache *AC,
+    const Instruction *CxtI, const DominatorTree *DT, bool UseInstrInfo = true);
 OverflowResult computeOverflowForSignedAdd(const Value *LHS, const Value *RHS,
+                                           const DataLayout &DL,
+                                           AssumptionCache *AC = nullptr,
+                                           const Instruction *CxtI = nullptr,
+                                           const DominatorTree *DT = nullptr);
+OverflowResult computeOverflowForSignedAdd(const Value *LHS, const Value *RHS,
+                                           const KnownBits &LHSKnown,
+                                           const KnownBits &RHSKnown,
                                            const DataLayout &DL,
                                            AssumptionCache *AC = nullptr,
                                            const Instruction *CxtI = nullptr,
