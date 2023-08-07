@@ -6005,7 +6005,9 @@ bool InstCombinerImpl::replacedSelectWithOperand(SelectInst *SI,
 
 /// Try to fold the comparison based on range information we can get by checking
 /// whether bits are known to be zero or one in the inputs.
-Instruction *InstCombinerImpl::foldICmpUsingKnownBits(ICmpInst &I) {
+Instruction *InstCombinerImpl::foldICmpUsingKnownBits(ICmpInst &I,
+                                                      KnownBits &Op0Known,
+                                                      KnownBits &Op1Known) {
   Value *Op0 = I.getOperand(0), *Op1 = I.getOperand(1);
   Type *Ty = Op0->getType();
   ICmpInst::Predicate Pred = I.getPredicate();
@@ -6018,8 +6020,8 @@ Instruction *InstCombinerImpl::foldICmpUsingKnownBits(ICmpInst &I) {
   if (!BitWidth)
     return nullptr;
 
-  KnownBits Op0Known(BitWidth);
-  KnownBits Op1Known(BitWidth);
+  Op0Known = KnownBits(BitWidth);
+  Op1Known = KnownBits(BitWidth);
 
   if (SimplifyDemandedBits(&I, 0,
                            getDemandedBitsLHSMask(I, BitWidth),
@@ -6747,7 +6749,12 @@ Instruction *InstCombinerImpl::visitICmpInst(ICmpInst &I) {
     Changed = true;
   }
 
-  if (Value *V = simplifyICmpInst(I.getPredicate(), Op0, Op1, Q))
+  KnownBits Op0Known, Op1Known;
+  if (Instruction *Res = foldICmpUsingKnownBits(I, Op0Known, Op1Known))
+    return Res;
+
+  if (Value *V =
+          simplifyICmpInst(I.getPredicate(), Op0, Op1, Op0Known, Op1Known, Q))
     return replaceInstUsesWith(I, V);
 
   // Comparing -val or val with non-zero is the same as just comparing val
@@ -6784,9 +6791,6 @@ Instruction *InstCombinerImpl::visitICmpInst(ICmpInst &I) {
     return Res;
 
   if (Instruction *Res = foldICmpUsingBoolRange(I))
-    return Res;
-
-  if (Instruction *Res = foldICmpUsingKnownBits(I))
     return Res;
 
   // Test if the ICmpInst instruction is used exclusively by a select as

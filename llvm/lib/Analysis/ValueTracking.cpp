@@ -362,6 +362,22 @@ bool llvm::isKnownNonEqual(const Value *V1, const Value *V2,
                                          safeCxtI(V2, V1, CxtI), UseInstrInfo));
 }
 
+static bool isKnownNonEqual(const Value *V1, const Value *V2,
+                            const KnownBits &Known1, const KnownBits &Known2,
+                            unsigned Depth, const SimplifyQuery &Q,
+                            bool UsePrecomputedKnownBits = false);
+
+bool llvm::isKnownNonEqual(const Value *V1, const Value *V2,
+                           const KnownBits &Known1, const KnownBits &Known2,
+                           const DataLayout &DL, AssumptionCache *AC,
+                           const Instruction *CxtI, const DominatorTree *DT,
+                           bool UseInstrInfo) {
+  return ::isKnownNonEqual(V1, V2, Known1, Known2, 0,
+                           SimplifyQuery(DL, /*TLI*/ nullptr, DT, AC,
+                                         safeCxtI(V2, V1, CxtI), UseInstrInfo),
+                           /* UsePrecomputedKnownBits */ true);
+}
+
 static bool MaskedValueIsZero(const Value *V, const APInt &Mask, unsigned Depth,
                               const SimplifyQuery &Q);
 
@@ -3100,6 +3116,15 @@ static bool isNonEqualPHIs(const PHINode *PN1, const PHINode *PN2,
 /// Return true if it is known that V1 != V2.
 static bool isKnownNonEqual(const Value *V1, const Value *V2, unsigned Depth,
                             const SimplifyQuery &Q) {
+  KnownBits Known1, Known2;
+  return isKnownNonEqual(V1, V2, Known1, Known2, Depth, Q);
+}
+
+/// Return true if it is known that V1 != V2.
+static bool isKnownNonEqual(const Value *V1, const Value *V2,
+                            const KnownBits &Known1, const KnownBits &Known2,
+                            unsigned Depth, const SimplifyQuery &Q,
+                            bool UsePrecomputedKnownBits) {
   if (V1 == V2)
     return false;
   if (V1->getType() != V2->getType())
@@ -3139,11 +3164,13 @@ static bool isKnownNonEqual(const Value *V1, const Value *V2, unsigned Depth,
   if (V1->getType()->isIntOrIntVectorTy()) {
     // Are any known bits in V1 contradictory to known bits in V2? If V1
     // has a known zero where V2 has a known one, they must not be equal.
-    KnownBits Known1 = computeKnownBits(V1, Depth, Q);
-    KnownBits Known2 = computeKnownBits(V2, Depth, Q);
-
-    if (Known1.Zero.intersects(Known2.One) ||
-        Known2.Zero.intersects(Known1.One))
+    using PairType = std::pair<const KnownBits &, const KnownBits &>;
+    const auto &[Known1Ref, Known2Ref] =
+        UsePrecomputedKnownBits ? PairType(Known1, Known2)
+                                : PairType(computeKnownBits(V1, Depth, Q),
+                                           computeKnownBits(V2, Depth, Q));
+    if (Known1Ref.Zero.intersects(Known2Ref.One) ||
+        Known2Ref.Zero.intersects(Known1Ref.One))
       return true;
   }
   return false;

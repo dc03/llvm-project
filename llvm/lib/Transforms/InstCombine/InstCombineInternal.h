@@ -592,7 +592,8 @@ public:
   Instruction *foldICmpWithCastOp(ICmpInst &ICmp);
   Instruction *foldICmpWithZextOrSext(ICmpInst &ICmp);
 
-  Instruction *foldICmpUsingKnownBits(ICmpInst &Cmp);
+  Instruction *foldICmpUsingKnownBits(ICmpInst &Cmp, KnownBits &Op0Known,
+                                      KnownBits &Op1Known);
   Instruction *foldICmpWithDominatingICmp(ICmpInst &Cmp);
   Instruction *foldICmpWithConstant(ICmpInst &Cmp);
   Instruction *foldICmpUsingBoolRange(ICmpInst &I);

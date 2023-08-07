@@ -3727,7 +3727,10 @@ static Value *simplifyICmpWithIntrinsicOnLHS(CmpInst::Predicate Pred,
 /// Given operands for an ICmpInst, see if we can fold the result.
 /// If not, this returns null.
 static Value *simplifyICmpInst(unsigned Predicate, Value *LHS, Value *RHS,
-                               const SimplifyQuery &Q, unsigned MaxRecurse) {
+                               const KnownBits &LHSKnown,
+                               const KnownBits &RHSKnown,
+                               const SimplifyQuery &Q, unsigned MaxRecurse,
+                               bool UsePrecomputedKnownBits = false) {
   CmpInst::Predicate Pred = (CmpInst::Predicate)Predicate;
   assert(CmpInst::isIntPredicate(Pred) && "Not an integer compare!");
 
@@ -3978,7 +3981,11 @@ static Value *simplifyICmpInst(unsigned Predicate, Value *LHS, Value *RHS,
   // This is potentially expensive, and we have already computedKnownBits for
   // compares with 0 above here, so only try this for a non-zero compare.
   if (ICmpInst::isEquality(Pred) && !match(RHS, m_Zero()) &&
-      isKnownNonEqual(LHS, RHS, Q.DL, Q.AC, Q.CxtI, Q.DT, Q.IIQ.UseInstrInfo)) {
+      (UsePrecomputedKnownBits
+           ? isKnownNonEqual(LHS, RHS, LHSKnown, RHSKnown, Q.DL, Q.AC, Q.CxtI,
+                             Q.DT, Q.IIQ.UseInstrInfo)
+           : isKnownNonEqual(LHS, RHS, Q.DL, Q.AC, Q.CxtI, Q.DT,
+                             Q.IIQ.UseInstrInfo))) {
     return Pred == ICmpInst::ICMP_NE ? getTrue(ITy) : getFalse(ITy);
   }
 
@@ -4030,9 +4037,24 @@ static Value *simplifyICmpInst(unsigned Predicate, Value *LHS, Value *RHS,
   return nullptr;
 }
 
+static Value *simplifyICmpInst(unsigned Predicate, Value *LHS, Value *RHS,
+                               const SimplifyQuery &Q, unsigned MaxRecurse) {
+  KnownBits LHSKnown, RHSKnown;
+  return simplifyICmpInst(Predicate, LHS, RHS, LHSKnown, RHSKnown, Q,
+                          MaxRecurse);
+}
+
 Value *llvm::simplifyICmpInst(unsigned Predicate, Value *LHS, Value *RHS,
                               const SimplifyQuery &Q) {
   return ::simplifyICmpInst(Predicate, LHS, RHS, Q, RecursionLimit);
+}
+
+Value *llvm::simplifyICmpInst(unsigned Predicate, Value *LHS, Value *RHS,
+                              const KnownBits &LHSKnown,
+                              const KnownBits &RHSKnown,
+                              const SimplifyQuery &Q) {
+  return ::simplifyICmpInst(Predicate, LHS, RHS, LHSKnown, RHSKnown, Q,
+                            RecursionLimit, /* UsePrecomputedKnownBits */ true);
 }
 
 /// Given operands for an FCmpInst, see if we can fold the result.

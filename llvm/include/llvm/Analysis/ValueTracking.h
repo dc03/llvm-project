@@ -184,6 +184,12 @@ bool isKnownNonEqual(const Value *V1, const Value *V2, const DataLayout &DL,
                      const Instruction *CxtI = nullptr,
                      const DominatorTree *DT = nullptr,
                      bool UseInstrInfo = true);
+bool isKnownNonEqual(const Value *V1, const Value *V2, const KnownBits &Known1,
+                     const KnownBits &Known2, const DataLayout &DL,
+                     AssumptionCache *AC = nullptr,
+                     const Instruction *CxtI = nullptr,
+                     const DominatorTree *DT = nullptr,
+                     bool UseInstrInfo = true);
 
 /// Return true if 'V & Mask' is known to be zero. We use this predicate to
 /// simplify operations downstream. Mask is known to be zero for bits that V

@@ -243,6 +243,11 @@ Value *simplifyXorInst(Value *LHS, Value *RHS, const SimplifyQuery &Q);
 Value *simplifyICmpInst(unsigned Predicate, Value *LHS, Value *RHS,
                         const SimplifyQuery &Q);
 
+struct KnownBits;
+Value *simplifyICmpInst(unsigned Predicate, Value *LHS, Value *RHS,
+                        const KnownBits &LHSKnown, const KnownBits &RHSKnown,
+                        const SimplifyQuery &Q);
+
 /// Given operands for an FCmpInst, fold the result or return null.
 Value *simplifyFCmpInst(unsigned Predicate, Value *LHS, Value *RHS,
                         FastMathFlags FMF, const SimplifyQuery &Q);
