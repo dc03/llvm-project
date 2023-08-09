@@ -25,6 +25,7 @@
 #include "llvm/Analysis/AliasAnalysis.h"
 #include "llvm/Analysis/AssumeBundleQueries.h"
 #include "llvm/Analysis/AssumptionCache.h"
+#include "llvm/Analysis/CachedBitsValue.h"
 #include "llvm/Analysis/ConstantFolding.h"
 #include "llvm/Analysis/GuardUtils.h"
 #include "llvm/Analysis/InstructionSimplify.h"
@@ -144,12 +145,8 @@ static bool getShuffleDemandedElts(const ShuffleVectorInst *Shuf,
                                       DemandedElts, DemandedLHS, DemandedRHS);
 }
 
-static void computeKnownBits(const Value *V, const APInt &DemandedElts,
-                             KnownBits &Known, unsigned Depth,
-                             const SimplifyQuery &Q);
-
-static void computeKnownBits(const Value *V, KnownBits &Known, unsigned Depth,
-                             const SimplifyQuery &Q) {
+void llvm::computeKnownBits(const Value *V, KnownBits &Known, unsigned Depth,
+                            const SimplifyQuery &Q) {
   // Since the number of lanes in a scalable vector is unknown at compile time,
   // we track one bit which is implicitly broadcast to all lanes.  This means
   // that all lanes in a scalable vector are considered demanded.
@@ -178,12 +175,6 @@ void llvm::computeKnownBits(const Value *V, const APInt &DemandedElts,
                                    safeCxtI(V, CxtI), UseInstrInfo));
 }
 
-static KnownBits computeKnownBits(const Value *V, const APInt &DemandedElts,
-                                  unsigned Depth, const SimplifyQuery &Q);
-
-static KnownBits computeKnownBits(const Value *V, unsigned Depth,
-                                  const SimplifyQuery &Q);
-
 KnownBits llvm::computeKnownBits(const Value *V, const DataLayout &DL,
                                  unsigned Depth, AssumptionCache *AC,
                                  const Instruction *CxtI,
@@ -202,10 +193,14 @@ KnownBits llvm::computeKnownBits(const Value *V, const APInt &DemandedElts,
                                           safeCxtI(V, CxtI), UseInstrInfo));
 }
 
-bool llvm::haveNoCommonBitsSet(const Value *LHS, const Value *RHS,
+bool llvm::haveNoCommonBitsSet(const CachedBitsConstValue &LHSCache,
+                               const CachedBitsConstValue &RHSCache,
                                const DataLayout &DL, AssumptionCache *AC,
                                const Instruction *CxtI, const DominatorTree *DT,
                                bool UseInstrInfo) {
+  const Value *LHS = LHSCache.getValue();
+  const Value *RHS = RHSCache.getValue();
+
   assert(LHS->getType() == RHS->getType() &&
          "LHS and RHS should have the same type");
   assert(LHS->getType()->isIntOrIntVectorTy() &&
@@ -253,12 +248,14 @@ bool llvm::haveNoCommonBitsSet(const Value *LHS, const Value *RHS,
         match(LHS, m_Not(m_c_Or(m_Specific(A), m_Specific(B)))))
       return true;
   }
-  IntegerType *IT = cast<IntegerType>(LHS->getType()->getScalarType());
-  KnownBits LHSKnown(IT->getBitWidth());
-  KnownBits RHSKnown(IT->getBitWidth());
-  computeKnownBits(LHS, LHSKnown, DL, 0, AC, CxtI, DT, UseInstrInfo);
-  computeKnownBits(RHS, RHSKnown, DL, 0, AC, CxtI, DT, UseInstrInfo);
-  return KnownBits::haveNoCommonBitsSet(LHSKnown, RHSKnown);
+
+  return KnownBits::haveNoCommonBitsSet(
+      LHSCache.getKnownBits(0, SimplifyQuery(DL, /*TLI*/ nullptr, DT, AC,
+                                             safeCxtI(LHSCache, CxtI),
+                                             UseInstrInfo)),
+      RHSCache.getKnownBits(0, SimplifyQuery(DL, /*TLI*/ nullptr, DT, AC,
+                                             safeCxtI(RHSCache, CxtI),
+                                             UseInstrInfo)));
 }
 
 bool llvm::isOnlyUsedInZeroEqualityComparison(const Instruction *I) {
@@ -281,18 +278,13 @@ bool llvm::isKnownToBeAPowerOfTwo(const Value *V, const DataLayout &DL,
                                                 UseInstrInfo));
 }
 
-static bool isKnownNonZero(const Value *V, const APInt &DemandedElts,
-                           unsigned Depth, const SimplifyQuery &Q);
-
-static bool isKnownNonZero(const Value *V, unsigned Depth,
-                           const SimplifyQuery &Q);
-
-bool llvm::isKnownNonZero(const Value *V, const DataLayout &DL, unsigned Depth,
-                          AssumptionCache *AC, const Instruction *CxtI,
-                          const DominatorTree *DT, bool UseInstrInfo) {
-  return ::isKnownNonZero(V, Depth,
-                          SimplifyQuery(DL, /*TLI*/ nullptr, DT, AC,
-                                        safeCxtI(V, CxtI), UseInstrInfo));
+bool llvm::isKnownNonZero(const CachedBitsConstValue &V, const DataLayout &DL,
+                          unsigned Depth, AssumptionCache *AC,
+                          const Instruction *CxtI, const DominatorTree *DT,
+                          bool UseInstrInfo) {
+  return isKnownNonZero(V, Depth,
+                        SimplifyQuery(DL, /*TLI*/ nullptr, DT, AC,
+                                      safeCxtI(V, CxtI), UseInstrInfo));
 }
 
 bool llvm::isKnownNonNegative(const Value *V, const DataLayout &DL,
@@ -1778,8 +1770,8 @@ static void computeKnownBitsFromOperator(const Operator *I,
 
 /// Determine which bits of V are known to be either zero or one and return
 /// them.
-KnownBits computeKnownBits(const Value *V, const APInt &DemandedElts,
-                           unsigned Depth, const SimplifyQuery &Q) {
+KnownBits llvm::computeKnownBits(const Value *V, const APInt &DemandedElts,
+                                 unsigned Depth, const SimplifyQuery &Q) {
   KnownBits Known(getBitWidth(V->getType(), Q.DL));
   computeKnownBits(V, DemandedElts, Known, Depth, Q);
   return Known;
@@ -1787,8 +1779,8 @@ KnownBits computeKnownBits(const Value *V, const APInt &DemandedElts,
 
 /// Determine which bits of V are known to be either zero or one and return
 /// them.
-KnownBits computeKnownBits(const Value *V, unsigned Depth,
-                           const SimplifyQuery &Q) {
+KnownBits llvm::computeKnownBits(const Value *V, unsigned Depth,
+                                 const SimplifyQuery &Q) {
   KnownBits Known(getBitWidth(V->getType(), Q.DL));
   computeKnownBits(V, Known, Depth, Q);
   return Known;
@@ -1809,9 +1801,9 @@ KnownBits computeKnownBits(const Value *V, unsigned Depth,
 /// where V is a vector, known zero, and known one values are the
 /// same width as the vector element, and the bit is set only if it is true
 /// for all of the demanded elements in the vector specified by DemandedElts.
-void computeKnownBits(const Value *V, const APInt &DemandedElts,
-                      KnownBits &Known, unsigned Depth,
-                      const SimplifyQuery &Q) {
+void llvm::computeKnownBits(const Value *V, const APInt &DemandedElts,
+                            KnownBits &Known, unsigned Depth,
+                            const SimplifyQuery &Q) {
   if (!DemandedElts) {
     // No demanded elts, better to assume we don't know anything.
     Known.resetAll();
@@ -2474,9 +2466,10 @@ static bool isNonZeroShift(const Operator *I, const APInt &DemandedElts,
   return false;
 }
 
-static bool isKnownNonZeroFromOperator(const Operator *I,
+static bool isKnownNonZeroFromOperator(const CachedBitsConstValue &ICache,
                                        const APInt &DemandedElts,
                                        unsigned Depth, const SimplifyQuery &Q) {
+  const Operator *I = dyn_cast<Operator>(ICache.getValue());
   unsigned BitWidth = getBitWidth(I->getType()->getScalarType(), Q.DL);
   switch (I->getOpcode()) {
   case Instruction::Alloca:
@@ -2802,9 +2795,7 @@ static bool isKnownNonZeroFromOperator(const Operator *I,
     }
   }
 
-  KnownBits Known(BitWidth);
-  computeKnownBits(I, DemandedElts, Known, Depth, Q);
-  return Known.One != 0;
+  return ICache.getKnownBits(DemandedElts, Depth, Q).One != 0;
 }
 
 /// Return true if the given value is known to be non-zero when defined. For
@@ -2813,9 +2804,10 @@ static bool isKnownNonZeroFromOperator(const Operator *I,
 /// specified, perform context-sensitive analysis and return true if the
 /// pointer couldn't possibly be null at the specified instruction.
 /// Supports values with integer or pointer type and vectors of integers.
-bool isKnownNonZero(const Value *V, const APInt &DemandedElts, unsigned Depth,
-                    const SimplifyQuery &Q) {
-
+bool llvm::isKnownNonZero(const CachedBitsConstValue &VCache,
+                          const APInt &DemandedElts, unsigned Depth,
+                          const SimplifyQuery &Q) {
+  const Value *V(VCache);
 #ifndef NDEBUG
   Type *Ty = V->getType();
   assert(Depth <= MaxAnalysisRecursionDepth && "Limit Search Depth");
@@ -2898,8 +2890,8 @@ bool isKnownNonZero(const Value *V, const APInt &DemandedElts, unsigned Depth,
     }
   }
 
-  if (const auto *I = dyn_cast<Operator>(V))
-    if (isKnownNonZeroFromOperator(I, DemandedElts, Depth, Q))
+  if (isa<Operator>(V))
+    if (isKnownNonZeroFromOperator(VCache, DemandedElts, Depth, Q))
       return true;
 
   if (!isa<Constant>(V) &&
@@ -2909,11 +2901,12 @@ bool isKnownNonZero(const Value *V, const APInt &DemandedElts, unsigned Depth,
   return false;
 }
 
-bool isKnownNonZero(const Value *V, unsigned Depth, const SimplifyQuery &Q) {
-  auto *FVTy = dyn_cast<FixedVectorType>(V->getType());
+bool llvm::isKnownNonZero(const CachedBitsConstValue &VCache, unsigned Depth,
+                          const SimplifyQuery &Q) {
+  auto *FVTy = dyn_cast<FixedVectorType>(VCache->getType());
   APInt DemandedElts =
       FVTy ? APInt::getAllOnes(FVTy->getNumElements()) : APInt(1, 1);
-  return isKnownNonZero(V, DemandedElts, Depth, Q);
+  return isKnownNonZero(VCache, DemandedElts, Depth, Q);
 }
 
 /// If the pair of operators are the same invertible function, return the
@@ -3139,7 +3132,6 @@ static bool isKnownNonEqual(const Value *V1, const Value *V2, unsigned Depth,
     // has a known zero where V2 has a known one, they must not be equal.
     KnownBits Known1 = computeKnownBits(V1, Depth, Q);
     KnownBits Known2 = computeKnownBits(V2, Depth, Q);
-
     if (Known1.Zero.intersects(Known2.One) ||
         Known2.Zero.intersects(Known1.One))
       return true;
@@ -6222,11 +6214,13 @@ static OverflowResult mapOverflowResult(ConstantRange::OverflowResult OR) {
 
 /// Combine constant ranges from computeConstantRange() and computeKnownBits().
 static ConstantRange computeConstantRangeIncludingKnownBits(
-    const Value *V, bool ForSigned, const DataLayout &DL, unsigned Depth,
-    AssumptionCache *AC, const Instruction *CxtI, const DominatorTree *DT,
-    bool UseInstrInfo = true) {
-  KnownBits Known = computeKnownBits(V, DL, Depth, AC, CxtI, DT, UseInstrInfo);
-  ConstantRange CR1 = ConstantRange::fromKnownBits(Known, ForSigned);
+    const CachedBitsConstValue &V, bool ForSigned, const DataLayout &DL,
+    unsigned Depth, AssumptionCache *AC, const Instruction *CxtI,
+    const DominatorTree *DT, bool UseInstrInfo = true) {
+  ConstantRange CR1 = ConstantRange::fromKnownBits(
+      V.getKnownBits(Depth, SimplifyQuery(DL, /*TLI*/ nullptr, DT, AC,
+                                          safeCxtI(V, CxtI), UseInstrInfo)),
+      ForSigned);
   ConstantRange CR2 = computeConstantRange(V, ForSigned, UseInstrInfo);
   ConstantRange::PreferredRangeType RangeType =
       ForSigned ? ConstantRange::Signed : ConstantRange::Unsigned;
@@ -6290,9 +6284,9 @@ llvm::computeOverflowForSignedMul(const Value *LHS, const Value *RHS,
 }
 
 OverflowResult llvm::computeOverflowForUnsignedAdd(
-    const Value *LHS, const Value *RHS, const DataLayout &DL,
-    AssumptionCache *AC, const Instruction *CxtI, const DominatorTree *DT,
-    bool UseInstrInfo) {
+    const CachedBitsConstValue &LHS, const CachedBitsConstValue &RHS,
+    const DataLayout &DL, AssumptionCache *AC, const Instruction *CxtI,
+    const DominatorTree *DT, bool UseInstrInfo) {
   ConstantRange LHSRange = computeConstantRangeIncludingKnownBits(
       LHS, /*ForSigned=*/false, DL, /*Depth=*/0, AC, CxtI, DT, UseInstrInfo);
   ConstantRange RHSRange = computeConstantRangeIncludingKnownBits(
@@ -6300,13 +6294,10 @@ OverflowResult llvm::computeOverflowForUnsignedAdd(
   return mapOverflowResult(LHSRange.unsignedAddMayOverflow(RHSRange));
 }
 
-static OverflowResult computeOverflowForSignedAdd(const Value *LHS,
-                                                  const Value *RHS,
-                                                  const AddOperator *Add,
-                                                  const DataLayout &DL,
-                                                  AssumptionCache *AC,
-                                                  const Instruction *CxtI,
-                                                  const DominatorTree *DT) {
+static OverflowResult computeOverflowForSignedAdd(
+    const CachedBitsConstValue &LHS, const CachedBitsConstValue &RHS,
+    const AddOperator *Add, const DataLayout &DL, AssumptionCache *AC,
+    const Instruction *CxtI, const DominatorTree *DT) {
   if (Add && Add->hasNoSignedWrap()) {
     return OverflowResult::NeverOverflows;
   }
@@ -6932,12 +6923,10 @@ OverflowResult llvm::computeOverflowForSignedAdd(const AddOperator *Add,
                                        Add, DL, AC, CxtI, DT);
 }
 
-OverflowResult llvm::computeOverflowForSignedAdd(const Value *LHS,
-                                                 const Value *RHS,
-                                                 const DataLayout &DL,
-                                                 AssumptionCache *AC,
-                                                 const Instruction *CxtI,
-                                                 const DominatorTree *DT) {
+OverflowResult llvm::computeOverflowForSignedAdd(
+    const CachedBitsConstValue &LHS, const CachedBitsConstValue &RHS,
+    const DataLayout &DL, AssumptionCache *AC, const Instruction *CxtI,
+    const DominatorTree *DT) {
   return ::computeOverflowForSignedAdd(LHS, RHS, nullptr, DL, AC, CxtI, DT);
 }
 

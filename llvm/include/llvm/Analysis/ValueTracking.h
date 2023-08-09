@@ -16,6 +16,7 @@
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallSet.h"
+#include "llvm/Analysis/CachedBitsValue.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/InstrTypes.h"
@@ -89,6 +90,18 @@ KnownBits computeKnownBits(const Value *V, const APInt &DemandedElts,
                            const DominatorTree *DT = nullptr,
                            bool UseInstrInfo = true);
 
+void computeKnownBits(const Value *V, const APInt &DemandedElts,
+                      KnownBits &Known, unsigned Depth, const SimplifyQuery &Q);
+
+void computeKnownBits(const Value *V, KnownBits &Known, unsigned Depth,
+                      const SimplifyQuery &Q);
+
+KnownBits computeKnownBits(const Value *V, const APInt &DemandedElts,
+                           unsigned Depth, const SimplifyQuery &Q);
+
+KnownBits computeKnownBits(const Value *V, unsigned Depth,
+                           const SimplifyQuery &Q);
+
 /// Compute known bits from the range metadata.
 /// \p KnownZero the set of bits that are known to be zero
 /// \p KnownOne the set of bits that are known to be one
@@ -106,12 +119,12 @@ KnownBits analyzeKnownBitsFromAndXorOr(
     bool UseInstrInfo = true);
 
 /// Return true if LHS and RHS have no common bits set.
-bool haveNoCommonBitsSet(const Value *LHS, const Value *RHS,
+bool haveNoCommonBitsSet(const CachedBitsConstValue &LHSCache,
+                         const CachedBitsConstValue &RHSCache,
                          const DataLayout &DL, AssumptionCache *AC = nullptr,
                          const Instruction *CxtI = nullptr,
                          const DominatorTree *DT = nullptr,
                          bool UseInstrInfo = true);
-
 /// Return true if the given value is known to have exactly one bit set when
 /// defined. For vectors return true if every element is known to be a power
 /// of two when defined. Supports values with integer or pointer type and
@@ -132,11 +145,18 @@ bool isOnlyUsedInZeroEqualityComparison(const Instruction *CxtI);
 /// specified, perform context-sensitive analysis and return true if the
 /// pointer couldn't possibly be null at the specified instruction.
 /// Supports values with integer or pointer type and vectors of integers.
-bool isKnownNonZero(const Value *V, const DataLayout &DL, unsigned Depth = 0,
-                    AssumptionCache *AC = nullptr,
+bool isKnownNonZero(const CachedBitsConstValue &V, const DataLayout &DL,
+                    unsigned Depth = 0, AssumptionCache *AC = nullptr,
                     const Instruction *CxtI = nullptr,
                     const DominatorTree *DT = nullptr,
                     bool UseInstrInfo = true);
+
+bool isKnownNonZero(const CachedBitsConstValue &V, unsigned Depth,
+                    const SimplifyQuery &Q);
+
+bool isKnownNonZero(const CachedBitsConstValue &VCache,
+                    const APInt &DemandedElts, unsigned Depth,
+                    const SimplifyQuery &Q);
 
 /// Return true if the two given values are negation.
 /// Currently can recoginze Value pair:
@@ -831,13 +851,12 @@ OverflowResult computeOverflowForSignedMul(const Value *LHS, const Value *RHS,
                                            const Instruction *CxtI,
                                            const DominatorTree *DT,
                                            bool UseInstrInfo = true);
-OverflowResult computeOverflowForUnsignedAdd(const Value *LHS, const Value *RHS,
-                                             const DataLayout &DL,
-                                             AssumptionCache *AC,
-                                             const Instruction *CxtI,
-                                             const DominatorTree *DT,
-                                             bool UseInstrInfo = true);
-OverflowResult computeOverflowForSignedAdd(const Value *LHS, const Value *RHS,
+OverflowResult computeOverflowForUnsignedAdd(
+    const CachedBitsConstValue &LHS, const CachedBitsConstValue &RHS,
+    const DataLayout &DL, AssumptionCache *AC, const Instruction *CxtI,
+    const DominatorTree *DT, bool UseInstrInfo = true);
+OverflowResult computeOverflowForSignedAdd(const CachedBitsConstValue &LHS,
+                                           const CachedBitsConstValue &RHS,
                                            const DataLayout &DL,
                                            AssumptionCache *AC = nullptr,
                                            const Instruction *CxtI = nullptr,
