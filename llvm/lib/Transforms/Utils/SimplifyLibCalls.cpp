@@ -3693,7 +3693,6 @@ Value *LibCallSimplifier::optimizeCall(CallInst *CI, IRBuilderBase &Builder) {
   if (CI->isNoBuiltin())
     return nullptr;
 
-  LibFunc Func;
   Function *Callee = CI->getCalledFunction();
   bool IsCallingConvC = TargetLibraryInfoImpl::isCallingConvCCompatible(CI);
 
@@ -3739,9 +3738,11 @@ Value *LibCallSimplifier::optimizeCall(CallInst *CI, IRBuilderBase &Builder) {
     }
   }
 
+  LibFunc Func;
+  bool HasLibFunc = TLI->getLibFunc(*Callee, Func);
   // Also try to simplify calls to fortified library functions.
   if (Value *SimplifiedFortifiedCI =
-          FortifiedSimplifier.optimizeCall(CI, Builder)) {
+          FortifiedSimplifier.optimizeCall(CI, Builder, Func, HasLibFunc)) {
     // Try to further simplify the result.
     CallInst *SimplifiedCI = dyn_cast<CallInst>(SimplifiedFortifiedCI);
     if (SimplifiedCI && SimplifiedCI->getCalledFunction()) {
@@ -3763,7 +3764,7 @@ Value *LibCallSimplifier::optimizeCall(CallInst *CI, IRBuilderBase &Builder) {
   }
 
   // Then check for known library functions.
-  if (TLI->getLibFunc(*Callee, Func) && isLibFuncEmittable(M, TLI, Func)) {
+  if (HasLibFunc && isLibFuncEmittable(M, TLI, Func)) {
     // We never change the calling convention.
     if (!ignoreCallingConv(Func) && !IsCallingConvC)
       return nullptr;
@@ -4134,6 +4135,15 @@ Value *FortifiedLibCallSimplifier::optimizeVSPrintfChk(CallInst *CI,
 
 Value *FortifiedLibCallSimplifier::optimizeCall(CallInst *CI,
                                                 IRBuilderBase &Builder) {
+  LibFunc Func;
+  bool HasLibFunc = TLI->getLibFunc(*CI->getCalledFunction(), Func);
+  return optimizeCall(CI, Builder, Func, HasLibFunc);
+}
+
+Value *FortifiedLibCallSimplifier::optimizeCall(CallInst *CI,
+                                                IRBuilderBase &Builder,
+                                                LibFunc &Func,
+                                                bool HasLibFunc) {
   // FIXME: We shouldn't be changing "nobuiltin" or TLI unavailable calls here.
   // Some clang users checked for _chk libcall availability using:
   //   __has_builtin(__builtin___memcpy_chk)
@@ -4147,8 +4157,6 @@ Value *FortifiedLibCallSimplifier::optimizeCall(CallInst *CI,
   //
   // PR23093.
 
-  LibFunc Func;
-  Function *Callee = CI->getCalledFunction();
   bool IsCallingConvC = TargetLibraryInfoImpl::isCallingConvCCompatible(CI);
 
   SmallVector<OperandBundleDef, 2> OpBundles;
@@ -4159,7 +4167,7 @@ Value *FortifiedLibCallSimplifier::optimizeCall(CallInst *CI,
 
   // First, check that this is a known library functions and that the prototype
   // is correct.
-  if (!TLI->getLibFunc(*Callee, Func))
+  if (!HasLibFunc)
     return nullptr;
 
   // We never change the calling convention.

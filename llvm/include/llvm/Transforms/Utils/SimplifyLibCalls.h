@@ -50,6 +50,8 @@ public:
   /// optimal form can't be found.
   /// The call must not be an indirect call.
   Value *optimizeCall(CallInst *CI, IRBuilderBase &B);
+  Value *optimizeCall(CallInst *CI, IRBuilderBase &Builder, LibFunc &Func,
+                      bool HasLibFunc);
 
 private:
   Value *optimizeMemCpyChk(CallInst *CI, IRBuilderBase &B);
