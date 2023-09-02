@@ -278,7 +278,8 @@ public:
   /// Remove the last element of the SetVector.
   void pop_back() {
     assert(!empty() && "Cannot remove an element from an empty SetVector!");
-    set_.erase(back());
+    if (!isSmall())
+      set_.erase(back());
     vector_.pop_back();
   }
 
