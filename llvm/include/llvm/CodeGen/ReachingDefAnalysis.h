@@ -94,7 +94,7 @@ private:
   DenseMap<MachineInstr *, int> InstIds;
 
   /// All reaching defs of a given RegUnit for a given MBB.
-  using MBBRegUnitDefs = TinyPtrVector<ReachingDef>;
+  using MBBRegUnitDefs = SmallVector<ReachingDef, 1>;
   /// All reaching defs of all reg units for a given MBB
   using MBBDefsInfo = std::vector<MBBRegUnitDefs>;
   /// All reaching defs of all reg units for a all MBBs
