@@ -701,7 +701,7 @@ public:
 
 /// MCRegUnitRootIterator enumerates the root registers of a register unit.
 class MCRegUnitRootIterator {
-  std::array<uint16_t, 2> RootRegs = {0, 0};
+  const MCPhysReg (*RootRegs)[2] = nullptr;
   unsigned RootReg = 0;
 
 public:
@@ -709,17 +709,17 @@ public:
 
   MCRegUnitRootIterator(unsigned RegUnit, const MCRegisterInfo *MCRI) {
     assert(RegUnit < MCRI->getNumRegUnits() && "Invalid register unit");
-    RootRegs = {MCRI->RegUnitRoots[RegUnit][0], MCRI->RegUnitRoots[RegUnit][1]};
+    RootRegs = &MCRI->RegUnitRoots[RegUnit];
   }
 
   /// Dereference to get the current root register.
   unsigned operator*() const {
-    return RootRegs[RootReg];
+    return (*RootRegs)[RootReg];
   }
 
   /// Check if the iterator is at the end of the list.
   bool isValid() const {
-    return RootReg < 2 && RootRegs[RootReg];
+    return RootReg < 2 && (*RootRegs)[RootReg];
   }
 
   /// Preincrement to move to the next root register.
