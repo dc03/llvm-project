@@ -25,14 +25,14 @@ void LiveRegUnits::removeRegsNotPreserved(const uint32_t *RegMask) {
     if (RootReg.isValid()) {
       if (MachineOperand::clobbersPhysReg(RegMask, *RootReg)) {
         Units.reset(U);
-        break;
+        continue;
       }
       ++RootReg;
     }
     if (RootReg.isValid()) {
       if (MachineOperand::clobbersPhysReg(RegMask, *RootReg)) {
         Units.reset(U);
-        break;
+        continue;
       }
     }
   }
